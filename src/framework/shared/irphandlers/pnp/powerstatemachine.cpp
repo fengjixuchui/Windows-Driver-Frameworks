@@ -1035,7 +1035,7 @@ const POWER_STATE_TABLE FxPkgPnp::m_WdfPowerStates[] =
           0 },
     },
 
-    // WdfDevStatePowerNotifyingD0EntryToWakeInterrupts
+    // WdfDevStatePowerNotifyingD0EntryToWakeInterruptsNP
     {   FxPkgPnp::PowerNotifyingD0EntryToWakeInterruptsNP,
         { PowerWakeInterruptCompleteTransition, WdfDevStatePowerWakingConnectInterruptNP TRAP_ON_EVENT },
         NULL,
@@ -1043,6 +1043,58 @@ const POWER_STATE_TABLE FxPkgPnp::m_WdfPowerStates[] =
           0 },
     },
 
+    // WdfDevStatePowerInitialPowerUpFailedPowerDown
+    {   FxPkgPnp::PowerInitialPowerUpFailedPowerDown,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+    
+
+    // WdfDevStatePowerUpFailedPowerDown
+    {   FxPkgPnp::PowerUpFailedPowerDown,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+    
+
+    // WdfDevStatePowerUpFailedPowerDownNP
+    {   FxPkgPnp::PowerUpFailedPowerDownNP,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+
+    // WdfDevStatePowerInitialSelfManagedIoFailedStarted
+    {   FxPkgPnp::PowerInitialSelfManagedIoFailedStarted,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+    
+
+    // WdfDevStatePowerStartSelfManagedIoFailedStarted
+    {   FxPkgPnp::PowerStartSelfManagedIoFailedStarted,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+    
+
+    // WdfDevStatePowerStartSelfManagedIoFailedStartedNP
+    {   FxPkgPnp::PowerStartSelfManagedIoFailedStartedNP,
+        { PowerEventMaximum, WdfDevStatePowerNull },
+        NULL,
+        { FALSE,
+          0 },
+    },
+    
     // WdfDevStatePowerNull
     // *** no entry for this state ***
 };
@@ -2140,11 +2192,14 @@ Arguments:
     This - instance of the state machine
 
 Return Value:
-    new power state
+    WdfDevStatePowerInitialPowerUpFailedDerefParent
+    WdfDevStatePowerInitialPowerUpFailedPowerDown
+    WdfDevStatePowerD0StartingConnectInterrupt
 
 --*/
 {
     NTSTATUS    status;
+    FxCxCallbackProgress progress;
 
     //
     // Call the driver to tell it to put the hardware into the working
@@ -2155,19 +2210,25 @@ Return Value:
     //
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
-        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState);
-
+        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
+        &progress);
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Entry WDFDEVICE 0x%p !devobj 0x%p,  old state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            This->m_Device->GetHandle(), 
-            This->m_Device->GetDeviceObject(),
-            This->m_DevicePowerState, status);
-
+        if (progress >= FxCxCallbackProgressClientSucceeded) {
+            return WdfDevStatePowerInitialPowerUpFailedPowerDown;
+        }
         return WdfDevStatePowerInitialPowerUpFailedDerefParent;
     }
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    if (This->IsSleepStudyTrackingRefs() != FALSE) {
+        //
+        // WDF re-baselines the start time of WDF DRIPS blockers after D0Entry 
+        // succeeds so that we only measure the time blocking time while the 
+        // driver is in D0.
+        //
+        This->SleepStudyResetBlockersForD0();
+    }
+#endif
 
     return WdfDevStatePowerD0StartingConnectInterrupt;
 }
@@ -2279,11 +2340,21 @@ Return Value:
 
     if (This->m_SelfManagedIoMachine != NULL) {
         NTSTATUS status;
+        FxCxCallbackProgress progress;
 
-        status = This->m_SelfManagedIoMachine->Start();
+        status = This->m_SelfManagedIoMachine->Start(&progress);
 
         if (!NT_SUCCESS(status)) {
-            return WdfDevStatePowerInitialSelfManagedIoFailed;
+            //
+            // Tracing done by m_SelfManagedIoMachine
+            //
+            if (progress >= FxCxCallbackProgressClientSucceeded) {
+                return WdfDevStatePowerInitialSelfManagedIoFailedStarted;
+            }
+            else
+            {
+                return WdfDevStatePowerInitialSelfManagedIoFailed;
+            }
         }
     }
 
@@ -2441,14 +2512,6 @@ Return Value:
                                          WdfPowerDeviceD3Final);
     if (!NT_SUCCESS(status)) {
         failed = TRUE;
-
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Exit WDFDEVICE 0x%p !devobj 0x%p, new state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            This->m_Device->GetHandle(), 
-            This->m_Device->GetDeviceObject(),
-            WdfPowerDeviceD3Final, status);
     }
 
     This->PowerSetDevicePowerState(WdfPowerDeviceD3Final);
@@ -2866,13 +2929,6 @@ Return Value:
     status = m_DeviceD0Exit.Invoke(m_Device->GetHandle(), state);
 
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Exit WDFEVICE 0x%p !devobj 0x%p, new state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            m_Device->GetHandle(), 
-            m_Device->GetDeviceObject(), state, status);
-
         failed = TRUE;
     }
 
@@ -3005,13 +3061,6 @@ Return Value:
     status = m_DeviceD0Exit.Invoke(m_Device->GetHandle(), state);
 
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Exit WDFDEVICE 0x%p !devobj 0x%p, new state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            m_Device->GetHandle(), 
-            m_Device->GetDeviceObject(), state, status);
-
         failed = TRUE;
     }
 
@@ -3225,15 +3274,21 @@ Return Value:
 
     if (This->m_SelfManagedIoMachine != NULL) {
         NTSTATUS    status;
+        FxCxCallbackProgress progress;
 
-        status = This->m_SelfManagedIoMachine->Start();
+        status = This->m_SelfManagedIoMachine->Start(&progress);
 
         if (!NT_SUCCESS(status)) {
-            DoTraceLevelMessage(
-                This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                "EvtDeviceSelfManagedIoRestart failed - %!STATUS!", status);
 
-            return WdfDevStatePowerStartSelfManagedIoFailed;
+            //
+            // Tracing done by m_SelfManagedIoMachine
+            //
+            if (progress >= FxCxCallbackProgressClientSucceeded) {
+                return WdfDevStatePowerStartSelfManagedIoFailedStarted;
+            }
+            else {
+                return WdfDevStatePowerStartSelfManagedIoFailed;
+            }
         }
     }
 
@@ -3285,15 +3340,20 @@ Return Value:
 
     if (This->m_SelfManagedIoMachine != NULL) {
         NTSTATUS    status;
+        FxCxCallbackProgress progress;
 
-        status = This->m_SelfManagedIoMachine->Start();
+        status = This->m_SelfManagedIoMachine->Start(&progress);
 
         if (!NT_SUCCESS(status)) {
-            DoTraceLevelMessage(
-                This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                "EvtDeviceSelfManagedIoRestart failed - %!STATUS!", status);
-
-            return WdfDevStatePowerStartSelfManagedIoFailedNP;
+            //
+            // Tracing done by m_SelfManagedIoMachine
+            //
+            if (progress >= FxCxCallbackProgressClientSucceeded) {
+                return WdfDevStatePowerStartSelfManagedIoFailedStartedNP;
+            }
+            else {
+                return WdfDevStatePowerStartSelfManagedIoFailedNP;
+            }
         }
     }
 
@@ -3438,6 +3498,7 @@ Return Value:
 --*/
 {
     NTSTATUS status;
+    FxCxCallbackProgress progress;
 
     //
     // m_DevicePowerState is the "old" state because we update it after the
@@ -3445,19 +3506,28 @@ Return Value:
     //
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
-        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState);
+        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
+        &progress);
 
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Entry WDFDEVICE 0x%p !devobj 0x%p, old state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            This->m_Device->GetHandle(), 
-            This->m_Device->GetDeviceObject(),
-            This->m_DevicePowerState, status);
-
-        return WdfDevStatePowerUpFailedDerefParent;
+        if (progress >= FxCxCallbackProgressClientSucceeded) {
+            return WdfDevStatePowerUpFailedPowerDown;
+        }
+        else {
+            return WdfDevStatePowerUpFailedDerefParent;
+        }
     }
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    if (This->IsSleepStudyTrackingRefs() != FALSE) {
+        //
+        // WDF re-baselines the start time of WDF DRIPS blockers after D0Entry 
+        // succeeds so that we only measure the time blocking time while the 
+        // driver is in D0.
+        //
+        This->SleepStudyResetBlockersForD0();
+    }
+#endif
 
     return WdfDevStatePowerNotifyingD0EntryToWakeInterrupts;
 }
@@ -3483,6 +3553,7 @@ Return Value:
 --*/
 {
     NTSTATUS status;
+    FxCxCallbackProgress progress;
 
     //
     // m_DevicePowerState is the "old" state because we update it after the
@@ -3490,19 +3561,28 @@ Return Value:
     //
     status = This->m_DeviceD0Entry.Invoke(
         This->m_Device->GetHandle(),
-        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState);
+        (WDF_POWER_DEVICE_STATE) This->m_DevicePowerState,
+        &progress);
 
     if (!NT_SUCCESS(status)) {
-        DoTraceLevelMessage(
-            This->GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Entry WDFDEVICE 0x%p !devobj 0x%p, old state "
-            "%!WDF_POWER_DEVICE_STATE! failed, %!STATUS!",
-            This->m_Device->GetHandle(), 
-            This->m_Device->GetDeviceObject(),
-            This->m_DevicePowerState, status);
-
-        return WdfDevStatePowerUpFailedDerefParentNP;
+        if (progress >= FxCxCallbackProgressClientSucceeded) {
+            return WdfDevStatePowerUpFailedPowerDownNP;
+        }
+        else {
+            return WdfDevStatePowerUpFailedDerefParentNP;
+        }
     }
+
+    //
+    // WDF re-baselines the start time of WDF DRIPS blockers after D0Entry 
+    // succeeds and this state requires all actions to be non-paged. We 
+    // cannot guarantee the export driver will not use paged memory 
+    // so we skip the call. The consequence of this is that drivers that 
+    // report sleep study blockers will provide times that include the time
+    // to request the power IRP and the time other devices in the stack take 
+    // to process the IRP.
+    //
+    //This->SleepStudyResetBlockersForD0();
 
     return WdfDevStatePowerNotifyingD0EntryToWakeInterruptsNP;
 }
@@ -3813,8 +3893,6 @@ Return Value:
 {
     NTSTATUS status;
 
-    COVERAGE_TRAP();
-
     (void) This->PowerDmaPowerDown();
 
     status = This->m_DeviceD0ExitPreInterruptsDisabled.Invoke(
@@ -4069,6 +4147,144 @@ Return Value:
     This->PowerParentPowerDereference();
 
     return WdfDevStatePowerInitialPowerUpFailed;
+}
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerInitialPowerUpFailedPowerDown(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Transitions the client driver into Dx
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerInitialPowerUpFailedDerefParent
+
+  --*/
+{
+    (VOID) This->m_DeviceD0Exit.Invoke(This->m_Device->GetHandle(), 
+                                       WdfPowerDeviceD3Final);
+
+    return WdfDevStatePowerInitialPowerUpFailedDerefParent;
+}
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerUpFailedPowerDown(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Notifies Cx of failure to enter D0 state
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerUpFailedDerefParent
+
+  --*/
+{
+    (VOID) This->m_DeviceD0Exit.Invoke(This->m_Device->GetHandle(), 
+                                       WdfPowerDeviceD3Final);
+
+    return WdfDevStatePowerUpFailedDerefParent;
+}
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerUpFailedPowerDownNP(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Notifies Cx of failure to enter D0 state
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerUpFailedDerefParentNP
+
+  --*/
+{
+    (VOID) This->m_DeviceD0Exit.Invoke(This->m_Device->GetHandle(), 
+                                       WdfPowerDeviceD3Final);
+
+    return WdfDevStatePowerUpFailedDerefParentNP;
+}
+
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerInitialSelfManagedIoFailedStarted(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Notifies Cx of failure to start Self Managed IO
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerInitialSelfManagedIoFailed
+
+  --*/
+{
+    This->m_SelfManagedIoMachine->Suspend();
+
+    return WdfDevStatePowerInitialSelfManagedIoFailed;
+}
+
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerStartSelfManagedIoFailedStarted(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Notifies Cx of failure to start Self Managed IO
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerStartSelfManagedIoFailed
+
+  --*/
+{
+    This->m_SelfManagedIoMachine->Suspend();
+
+    return WdfDevStatePowerStartSelfManagedIoFailed;
+}
+
+
+WDF_DEVICE_POWER_STATE
+FxPkgPnp::PowerStartSelfManagedIoFailedStartedNP(
+    __inout FxPkgPnp*   This
+    )
+/*++
+
+Routine Description:
+    Notifies Cx of failure to start Self Managed IO
+
+Arguments:
+    This - The instance of the state machine
+
+Return Value:
+    WdfDevStatePowerStartSelfManagedIoFailedNP
+
+  --*/
+{
+    This->m_SelfManagedIoMachine->Suspend();
+
+    return WdfDevStatePowerStartSelfManagedIoFailedNP;
 }
 
 WDF_DEVICE_POWER_STATE
@@ -5314,22 +5530,13 @@ Return Value:
             m_Device->GetHandle(), status);
     }
 
-    status = m_DeviceD0Exit.Invoke(m_Device->GetHandle(), 
+    (VOID) m_DeviceD0Exit.Invoke(m_Device->GetHandle(), 
         WdfPowerDeviceD3Final);
-
-    if (!NT_SUCCESS(status)) {
-        //
-        // Report the error, but continue forward
-        //
-        DoTraceLevelMessage(
-            GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-            "EvtDeviceD0Exit WDFDEVICE 0x%p !devobj 0x%p failed, %!STATUS!",
-            m_Device->GetHandle(), 
-            m_Device->GetDeviceObject(), status);
-    }
 
     PowerSetDevicePowerState(WdfPowerDeviceD3Final);
 }
+
+
 
 
 

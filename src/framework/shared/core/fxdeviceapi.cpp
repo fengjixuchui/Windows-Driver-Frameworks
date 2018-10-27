@@ -1248,30 +1248,33 @@ WDFEXPORT(WdfDeviceSetFailed)(
 {
     DDI_ENTRY();
 
-    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    PFX_DRIVER_GLOBALS pCallerFxDriverGlobals;
+    PFX_DRIVER_GLOBALS pObjectFxDriverGlobals;
     FxDevice *pDevice;
 
-    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+    pCallerFxDriverGlobals = GetFxDriverGlobals(DriverGlobals);
+
+    FxObjectHandleGetPtrAndGlobals(pCallerFxDriverGlobals,
                                    Device,
                                    FX_TYPE_DEVICE,
                                    (PVOID *) &pDevice,
-                                   &pFxDriverGlobals);
+                                   &pObjectFxDriverGlobals);
 
     if (FailedAction < WdfDeviceFailedAttemptRestart ||
         FailedAction > WdfDeviceFailedNoRestart) {
         DoTraceLevelMessage(
-            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            pObjectFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "Invalid FailedAction %d", FailedAction);
         FxVerifierDbgBreakPoint(pDevice->GetDriverGlobals());
         return;
     }
 
     DoTraceLevelMessage(
-        pFxDriverGlobals, TRACE_LEVEL_INFORMATION, TRACINGDEVICE,
+        pObjectFxDriverGlobals, TRACE_LEVEL_INFORMATION, TRACINGDEVICE,
         "WDFDEVICE %p, !devobj %p SetFailed %!WDF_DEVICE_FAILED_ACTION!",
         Device, pDevice->GetDeviceObject(), FailedAction);
 
-    pDevice->m_PkgPnp->SetDeviceFailed(FailedAction);
+    pDevice->m_PkgPnp->SetDeviceFailed(pCallerFxDriverGlobals, FailedAction);
 }
 
 __inline
@@ -1288,7 +1291,7 @@ StopIdleWorker(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 {
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1326,6 +1329,17 @@ StopIdleWorker(
         "WDFDEVICE %p WdfDeviceStopIdle, WaitForD0 %d %!STATUS!",
         Device, WaitForD0, status);
 
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    //
+    // status may be STATUS_SUCCESS or STATUS_PENDING, in either case we 
+    // increment
+    //
+    if (NT_SUCCESS(status) && 
+        pDevice->m_PkgPnp->IsSleepStudyTrackingRefs()) {
+        pDevice->m_PkgPnp->SleepStudyPowerRefIncrement();
+    }
+#endif
+
     return status;
 }
 
@@ -1341,7 +1355,7 @@ ResumeIdleWorker(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
 {
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1362,6 +1376,12 @@ ResumeIdleWorker(
     }
 
     pDevice->m_PkgPnp->PowerDereference(Tag, Line, File);
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    if (pDevice->m_PkgPnp->IsSleepStudyTrackingRefs()) {
+        pDevice->m_PkgPnp->SleepStudyPowerRefDecrement();
+    }
+#endif
 }
 
 _Must_inspect_result_
@@ -1376,6 +1396,20 @@ WDFEXPORT(WdfDeviceStopIdleNoTrack)(
     __in
     BOOLEAN WaitForD0
     )
+/*++
+
+Routine Description:
+    WdfDeviceStopIdle for drivers compiled against WDF 1.13 and older. This 
+    function entry point preserves the old function entry, without tag 
+    tracking, in the WDF Function Entry Table.
+
+Arguments:
+    See MSDN documentation for WdfDeviceStopIdle for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1407,8 +1441,21 @@ WDFEXPORT(WdfDeviceStopIdleActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
+/*++
+
+Routine Description:
+    WdfDeviceStopIdle and WdfDeviceStopIdleWithTag for drivers compiled 
+    against WDF 1.15/2.15 and newer.
+
+Arguments:
+    See MSDN documentation for WdfDeviceStopIdleWithTags for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1432,6 +1479,20 @@ WDFEXPORT(WdfDeviceResumeIdleNoTrack)(
     __in
     WDFDEVICE Device
     )
+/*++
+
+Routine Description:
+    WdfDeviceResumeIdle for drivers compiled against WDF 1.13/2.0 and older.
+    This function entry point preserves the old function, without tag
+    tracking, in the WDF Function Entry Table.
+
+Arguments:
+    See MSDN documentation for WdfDeviceResumeIdle for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 
@@ -1454,8 +1515,21 @@ WDFEXPORT(WdfDeviceResumeIdleActual)(
     __in
     LONG Line,
     __in
-    PSTR File
+    PCSTR File
     )
+/*++
+
+Routine Description:
+    WdfDeviceResumeIdle and WdfDeviceStopIdleWithTag for drivers compiled 
+    against WDF 1.15/2.15 and newer.
+
+Arguments:
+    See MSDN documentation for WdfDeviceResumeIdleWithTags for more details.
+
+Return Value:
+    NTSTATUS
+
+  --*/
 {
     DDI_ENTRY();
 

@@ -81,10 +81,27 @@ FxVerifierGetObjectDebugInfo(
     __in PFX_DRIVER_GLOBALS  FxDriverGlobals
     );
 
+NTSTATUS
+FxVerifierReadObjectDebugInfo(
+    _In_ HANDLE Key,
+    _In_ PFX_DRIVER_GLOBALS  FxDriverGlobals,
+    _Inout_ FxObjectDebugInfo **Info,
+    _In_ PCWSTR KeyName,
+    _In_ FxObjectDebugInfoFlags DebugFlag,
+    _In_opt_ PCWSTR DefaultSettings
+    );
+
 VOID
 FxVerifierQueryTrackPower(
     __in HANDLE Key,
     __out FxTrackPowerOption* TrackPower
+    );
+
+VOID
+FxOverrideDefaultVerifierSettings(
+    __in    HANDLE Key,
+    __in    LPWSTR Name,
+    __out   PBOOLEAN OverrideValue
     );
 
 //
@@ -135,62 +152,74 @@ FxVerifyObjectTypeInTable(
 }
 
 _Must_inspect_result_
-FxObjectDebugInfo*
+NTSTATUS
 FxVerifyAllocateDebugInfo(
-    __in LPWSTR HandleNameList,
-    __in PFX_DRIVER_GLOBALS FxDriverGlobals
+    _Inout_ FxObjectDebugInfo** Info,
+    _In_ LPCWSTR HandleNameList,
+    _In_ PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _In_ FxObjectDebugInfoFlags DebugFlag
     )
 
 /*++
 
 Routine Description:
-    Allocates an array of FxObjectDebugInfo's.  The length of this array is the
-    same length as FxObjectsInfo.  The array is sorted the same as
-    FxObjectDebugInfo, ObjectInfo is ascending in the list.
+    Allocates an array of FxObjectDebugInfo's if 'Info' is NULL.  The length
+    of this array is the same length as FxObjectsInfo.  The array is sorted
+    the same as FxObjectDebugInfo, ObjectInfo is ascending in the list.
 
     If HandleNameList's first string is "*", we treat this as a wildcard and
     track all external handles.
 
 Arguments:
+    Info - preallocated FxObjectDebugInfo struct. If NULL one will be allocated
+
     HandleNameList - a multi-sz of handle names.  It is assumed the multi sz is
         well formed.
 
+    DebugFlag - Flag to set based on the passed in HandleNameList
+
 Return Value:
-    a pointer allocated by ExAllocatePoolWithTag.  The caller is responsible for
-    eventually freeing the pointer by calling ExFreePool.
+    NT_SUCCESS(Status) if pInfo is valid and the list is in use
 
 --*/
 
 {
     FxObjectDebugInfo* pInfo;
-    PWCHAR pCur;
-    ULONG i, length;
+    LPCWCHAR pCur;
+    ULONG i;
     BOOLEAN all;
+
+    ASSERT(Info != NULL);
+    pInfo = *Info;
 
     //
     // check to see if the multi sz is empty
     //
     if (*HandleNameList == NULL) {
-        return NULL;
+        return STATUS_INVALID_PARAMETER;
     }
-
-    length = sizeof(FxObjectDebugInfo) * FxObjectsInfoCount;
-
-    //
-    // Freed with ExFreePool in FxFreeDriverGlobals.  Must be non paged because
-    // objects can be allocated at IRQL > PASSIVE_LEVEL.
-    //
-    pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePoolWithTag(NonPagedPool,
-                                                       length,
-                                                       FxDriverGlobals->Tag);
 
     if (pInfo == NULL) {
-        return NULL;
+        
+        ULONG length = sizeof(FxObjectDebugInfo) * FxObjectsInfoCount;
+
+        //
+        // Freed with ExFreePool in FxFreeDriverGlobals.  Must be non paged because
+        // objects can be allocated at IRQL > PASSIVE_LEVEL.
+        //
+        pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePoolWithTag(NonPagedPool,
+                                                           length,
+                                                           FxDriverGlobals->Tag);
+        if (pInfo == NULL) {
+            return STATUS_MEMORY_NOT_ALLOCATED;
+        }
+        
+        RtlZeroMemory(pInfo, length);
     }
 
-    all = *HandleNameList == L'*' ? TRUE : FALSE;
+    ASSERT(pInfo != NULL);
 
-    RtlZeroMemory(pInfo, length);
+    all = *HandleNameList == L'*' ? TRUE : FALSE;
 
     //
     // Iterate over all of the objects in our internal array.  We iterate over
@@ -215,7 +244,7 @@ Return Value:
         // Short circuit if we are wildcarding
         //
         if (all) {
-            pInfo[i].u.DebugFlags |= FxObjectDebugTrackReferences;
+            pInfo[i].u.DebugFlags |= DebugFlag;
             continue;
         }
 
@@ -258,13 +287,17 @@ Return Value:
             // Case insensitive compare
             //
             if (RtlCompareUnicodeString(&handleName, &objectName, TRUE) == 0) {
-                pInfo[i].u.DebugFlags |= FxObjectDebugTrackReferences;
+                pInfo[i].u.DebugFlags |= DebugFlag;
                 break;
             }
         }
     }
 
-    return pInfo;
+    if (*Info == NULL) {
+        *Info = pInfo;
+    }
+    
+    return STATUS_SUCCESS;
 }
 
 VOID
@@ -335,23 +368,26 @@ FxObjectTypeToHandleName(
 
 _Must_inspect_result_
 BOOLEAN
-FxVerifierGetTrackReferences(
-    __in FxObjectDebugInfo* DebugInfo,
-    __in WDFTYPE ObjectType
+FxVerifierIsDebugInfoFlagSetForType(
+    _In_ FxObjectDebugInfo* DebugInfo,
+    _In_ WDFTYPE ObjectType,
+    _In_ FxObjectDebugInfoFlags Flag
     )
 
 /*++
 
 Routine Description:
-    For a given object type, returns to the caller if it should track references
-    to the object.
+    For a given object type and flag, returns to the caller if the flag is set.
 
 Arguments:
     DebugInfo - array of object debug info to search through
+
     ObjectType - the type of the object to check
 
+    FxObjectDebugInfoFlags - Flag to check for
+
 Return Value:
-    TRUE if references should be tracked, FALSE otherwise
+    TRUE if objects of the given type had its flag set.
 
 --*/
 
@@ -364,7 +400,7 @@ Return Value:
     for (i = 0; i < FxObjectsInfoCount; i++) {
         if (ObjectType == DebugInfo[i].ObjectType) {
             return FLAG_TO_BOOL(DebugInfo[i].u.DebugFlags,
-                                FxObjectDebugTrackReferences);
+                                Flag);
         }
         else if (ObjectType > FxObjectsInfo[i].ObjectType) {
             continue;
@@ -469,7 +505,13 @@ FxLibraryGlobalsQueryRegistrySettings(
     NTSTATUS status = STATUS_SUCCESS;
     DECLARE_CONST_UNICODE_STRING(path, WDF_REGISTRY_BASE_PATH);
     DECLARE_CONST_UNICODE_STRING(ifrDisabledName, WDF_GLOBAL_VALUE_IFRDISABLED);
+    DECLARE_CONST_UNICODE_STRING(ssDisabledName, WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED);
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    POWER_PLATFORM_INFORMATION platformInfo = {0};
+#endif
+
     ULONG ifrDisabled = 0;
+    ULONG ssDisabled = 0;
 
     status = FxRegKey::_OpenKey(NULL, &path, &hWdf.m_Key, KEY_READ);
     if (!NT_SUCCESS(status)) {
@@ -477,12 +519,16 @@ FxLibraryGlobalsQueryRegistrySettings(
     }
 
     status = FxRegKey::_QueryULong(hWdf.m_Key, &ifrDisabledName, &ifrDisabled);
-    if (!NT_SUCCESS(status)) {
-        goto exit;
+    if (NT_SUCCESS(status)) {
+        if (ifrDisabled == 1) {
+            FxLibraryGlobals.IfrDisabled = TRUE;
+        }
     }
 
-    if (ifrDisabled == 1) {
-        FxLibraryGlobals.IfrDisabled = TRUE;
+    FxLibraryGlobals.SleepStudyDisabled = FALSE;
+    status = FxRegKey::_QueryULong(hWdf.m_Key, &ssDisabledName, &ssDisabled);
+    if ((NT_SUCCESS(status)) && (ssDisabled == 1)) {
+        FxLibraryGlobals.SleepStudyDisabled = TRUE;
     }
 
 exit:
@@ -527,6 +573,11 @@ FxLibraryGlobalsCommission(
     // IFR is enabled by default
     //
     FxLibraryGlobals.IfrDisabled = FALSE;
+
+    //
+    // Logging Sleep Study Blockers is enabled by default
+    //
+    FxLibraryGlobals.SleepStudyDisabled = FALSE;
 
     //
     // Query global WDF settings (both KMDF and UMDF).
@@ -947,6 +998,66 @@ Returns:
     return STATUS_SUCCESS;
 }
 
+#if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
+BOOLEAN
+IsDriverVerifierActive(
+    _In_ MdDriverObject DriverObject
+    )
+/*++
+
+Routine Description:
+
+    Driver verifier can run in an active mode that crashes the system when
+    a check fails. It can also run in a passive mode that generates logging / 
+    telemetry when a check fails. We are checking to see if DV is running
+    in an active mode.
+
+Arguments:
+
+    DriverObject - Driver to test if DV is active.
+
+Returns:
+
+    TRUE if DV is running in manner that crashes the system when running
+    FALSE if DV is disabled or running passively.
+
+--*/
+{
+    BOOLEAN windowsVerifierActive;
+
+    windowsVerifierActive = MmIsDriverVerifying(DriverObject) ? TRUE: FALSE;
+
+    if (windowsVerifierActive) {
+    
+        NTSTATUS status;
+        FxAutoRegKey hVerifier;
+        DECLARE_CONST_UNICODE_STRING(verifierOptionsStr, L"XdvVerifierOptions");
+        DECLARE_CONST_UNICODE_STRING(verifierPath,
+            L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Session Manager\\Memory Management");
+
+        status = FxRegKey::_OpenKey(NULL, &verifierPath, &hVerifier.m_Key, KEY_READ);
+        if (NT_SUCCESS(status)) {
+
+            ULONG verifierOptions;
+            status = FxRegKey::_QueryULong(hVerifier.m_Key, &verifierOptionsStr, &verifierOptions); 
+            if (NT_SUCCESS(status)) {
+
+
+
+
+
+
+
+
+
+
+            }
+        }
+    }
+    return windowsVerifierActive;
+}
+#endif
+
 BOOLEAN
 IsWindowsVerifierOn(
     _In_ MdDriverObject DriverObject
@@ -954,12 +1065,13 @@ IsWindowsVerifierOn(
 {
     BOOLEAN windowsVerifierOn = FALSE;
 
+
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
     //
     // Check if windows driver verifier is on for this driver
     // We need this when initializing wdf verifier
     //
-    windowsVerifierOn = MmIsDriverVerifying(DriverObject) ? TRUE: FALSE;
+    windowsVerifierOn = IsDriverVerifierActive(DriverObject);
 
 #else
     UNREFERENCED_PARAMETER(DriverObject);
@@ -1159,6 +1271,9 @@ FxAllocateDriverGlobals(
     //
     pFxDriverGlobals->FxDsfOn  = FALSE;
 
+    pFxDriverGlobals->FxVerifyLeakDetection = NULL;
+    pFxDriverGlobals->FxVerifyTagTrackingEnabled = FALSE;
+
     //
     // Allocate a telemetry context if a telemetry client is enabled, for any level/keyword.
     //
@@ -1200,6 +1315,10 @@ FxFreeDriverGlobals(
         pFxDriverGlobals->DebugExtension = NULL;
     }
 
+    if (pFxDriverGlobals->FxVerifyLeakDetection != NULL) {
+        MxMemory::MxFreePool(pFxDriverGlobals->FxVerifyLeakDetection);
+    }
+
     //
     // Cleanup event b/c d'tor is not called for MxAllocatePoolWithTag.
     //
@@ -1223,7 +1342,7 @@ FxVerifierGetObjectDebugInfo(
 /*++
 
 Routine Description:
-    Attempts to open a value under the passed in key and create an array of
+    Attempts to open values under the passed in key and create an array of
     FxObjectDebugInfo.
 
 Arguments:
@@ -1235,15 +1354,114 @@ Return Value:
 --*/
 
 {
-    FxObjectDebugInfo* pInfo;
-    PVOID dataBuffer;
+    FxObjectDebugInfo *pInfo = NULL;
+    NTSTATUS status;
+
+    //
+    // Read TrackHandles settings
+    //
+    FxVerifierReadObjectDebugInfo(Key,
+                                  FxDriverGlobals,
+                                  &pInfo, 
+                                  L"TrackHandles",
+                                  FxObjectDebugTrackReferences,
+                                  NULL);
+    if (pInfo != NULL) {
+        FxDriverGlobals->FxVerifyTagTrackingEnabled = TRUE;
+    }
+
+    //
+    // See if we are tracking object counts for leak detection
+    //
+    DECLARE_CONST_UNICODE_STRING(valueName, L"ObjectLeakDetectionLimit");
+
+    ULONG Limit;
+    if (!NT_SUCCESS(FxRegKey::_QueryULong(Key, &valueName, &Limit))) {
+
+        Limit = (ULONG) FX_OBJECT_LEAK_DETECTION_DISABLED;
+    }
+
+    if (Limit != FX_OBJECT_LEAK_DETECTION_DISABLED) {
+        FxDriverGlobals->FxVerifyLeakDetection = (FxObjectDebugLeakDetection*)
+                            MxMemory::MxAllocatePoolWithTag(NonPagedPool,
+                                sizeof(FxObjectDebugLeakDetection),
+                                FxDriverGlobals->Tag);
+    }
+
+    if (FxDriverGlobals->FxVerifyLeakDetection == NULL) {
+        return pInfo;
+    }
+
+    RtlZeroMemory(FxDriverGlobals->FxVerifyLeakDetection, sizeof(FxObjectDebugLeakDetection));
+    FxDriverGlobals->FxVerifyLeakDetection->Limit = Limit;
+    FxDriverGlobals->FxVerifyLeakDetection->LimitScaled = Limit;
+    FxDriverGlobals->FxVerifyLeakDetection->ObjectCnt = 0;
+    FxDriverGlobals->FxVerifyLeakDetection->DeviceCnt = 0;
+    FxDriverGlobals->FxVerifyLeakDetection->Enabled = TRUE;
+
+    //
+    // Read REG key for "object types to count"
+    //
+    status = FxVerifierReadObjectDebugInfo(Key,
+                                           FxDriverGlobals,
+                                           &pInfo,
+                                           L"ObjectsForLeakDetection",
+                                           FxObjectDebugTrackObjectCount,
+                                           FX_OBJECT_LEAK_DETECTION_DEFAULT_TYPES);
+
+    if (!NT_SUCCESS(status) || NULL == pInfo) {
+        MxMemory::MxFreePool(FxDriverGlobals->FxVerifyLeakDetection);
+        FxDriverGlobals->FxVerifyLeakDetection = NULL;
+    } 
+
+    return pInfo;
+}
+
+
+NTSTATUS
+FxVerifierReadObjectDebugInfo(
+    _In_ HANDLE Key,
+    _In_ PFX_DRIVER_GLOBALS  FxDriverGlobals,
+    _Inout_  FxObjectDebugInfo **Info,
+    _In_ PCWSTR KeyName,
+    _In_ FxObjectDebugInfoFlags DebugFlag,
+    _In_opt_ PCWSTR DefaultSettings
+    )
+
+/*++
+
+Routine Description:
+    Attempts to open a value under the passed in key. Will allocate an array of
+    FxObjectDebugInfo if provided pointer is NULL.
+
+Arguments:
+    Key - Registry key to query the value for
+
+    FxDriverGlobals - globals
+    
+    Info - optional preallocated debug info structure.
+
+    KeyName - Key to read from
+
+    DebugFlag - flag to set in the debug info structure.
+
+    DefaultSettings - settings to use in the event the registery key is not 
+        present or malformed.
+    
+Return Value:
+    NT_SUCCESS if the registry key was read and memory was allocated.
+
+--*/
+
+{
+    PVOID dataBuffer = NULL;
     NTSTATUS status;
     ULONG length, type;
-    DECLARE_CONST_UNICODE_STRING(valueName, L"TrackHandles");
+    UNICODE_STRING valueName;
 
-    pInfo = NULL;
     type = REG_MULTI_SZ;
     length = 0;
+    RtlInitUnicodeString(&valueName, KeyName);
 
     //
     // Find out how big a buffer we need to allocate if the value is present
@@ -1261,7 +1479,7 @@ Return Value:
     // not, just bail now.
     //
     if (status != STATUS_BUFFER_OVERFLOW && status != STATUS_BUFFER_TOO_SMALL) {
-        return NULL;
+        goto exit;
     }
 
     //
@@ -1270,7 +1488,8 @@ Return Value:
     //
     dataBuffer = MxMemory::MxAllocatePoolWithTag(PagedPool, length, FxDriverGlobals->Tag);
     if (dataBuffer == NULL) {
-        return NULL;
+        status = STATUS_MEMORY_NOT_ALLOCATED;
+        goto exit;
     }
 
     //
@@ -1296,14 +1515,21 @@ Return Value:
     if (NT_SUCCESS(status)) {
 #pragma prefast(push)
 #pragma prefast(suppress:__WARNING_PRECONDITION_NULLTERMINATION_VIOLATION, "FxRegKey::_VerifyMultiSzString makes sure the string is NULL-terminated")
-        pInfo = FxVerifyAllocateDebugInfo((LPWSTR) dataBuffer, FxDriverGlobals);
+        status = FxVerifyAllocateDebugInfo(Info, (LPCWSTR) dataBuffer, FxDriverGlobals, DebugFlag);
 #pragma prefast(pop)
 
     }
 
-    MxMemory::MxFreePool(dataBuffer);
+exit:
+    if (NULL != dataBuffer) {
+        MxMemory::MxFreePool(dataBuffer);
+    }
 
-    return pInfo;
+    if (!NT_SUCCESS(status) && DefaultSettings != NULL){
+        status = FxVerifyAllocateDebugInfo(Info, DefaultSettings, FxDriverGlobals, DebugFlag);
+    }
+
+    return status;
 }
 
 VOID
@@ -1364,7 +1590,11 @@ Routine Description:
     Initialize Driver Framework settings from the driver
     specific registry settings under
 
+    (KMDF)
     \REGISTRY\MACHINE\SYSTEM\ControlSetxxx\Services\<driver>\Parameters\Wdf
+
+    (UMDF)
+    \REGISTRY\MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\WUDF\Services\<driver>
 
 Arguments:
 
@@ -1438,29 +1668,28 @@ Arguments:
     RtlZeroMemory (&paramTable[0], sizeof(paramTable));
     i = 0;
 
+    #define ADD_TABLE_ENTRY(ValueName, Value, Default) \
+        paramTable[i].Flags = \
+            RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK; \
+        paramTable[i].Name = L##ValueName; \
+        paramTable[i].EntryContext = &Value; \
+        paramTable[i].DefaultType = \
+            (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_NONE; \
+        paramTable[i].DefaultData = &Default; \
+        paramTable[i].DefaultLength = sizeof(ULONG); \
+        i++; \
+        ASSERT(i < sizeof(paramTable) / sizeof(paramTable[0]));
+    
     verboseValue = 0;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerboseOn";
-    paramTable[i].EntryContext  = &verboseValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerboseOn", verboseValue, zero);
 
     allocateFailValue = (ULONG) -1;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifierAllocateFailCount";
-    paramTable[i].EntryContext  = &allocateFailValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &max;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifierAllocateFailCount", allocateFailValue, max);
 
     verifierOnValue = 0;
 
     //
-    // If the client version is 1.9 or above, the defaut (i.e when
+    // If the client version is 1.9 or above, the default (i.e when
     // the key is not present) VerifierOn state is tied to the
     // driver verifier.
     //
@@ -1468,34 +1697,13 @@ Arguments:
         verifierOnValue = WindowsVerifierOn;
     }
 
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifierOn";
-    paramTable[i].EntryContext  = &verifierOnValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &verifierOnValue;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifierOn", verifierOnValue, verifierOnValue);
 
     verifyDownlevelValue = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"VerifyDownLevel";
-    paramTable[i].EntryContext  = &verifyDownlevelValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("VerifyDownLevel", verifyDownlevelValue, zero);
 
     forceLogsInMiniDump = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"ForceLogsInMiniDump";
-    paramTable[i].EntryContext  = &forceLogsInMiniDump;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("ForceLogsInMiniDump", forceLogsInMiniDump, zero);
 
     //
     // Track driver for minidump log:
@@ -1504,53 +1712,28 @@ Arguments:
     //
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     trackDriverForMiniDumpLog = (ULONG) TRUE;
+    ADD_TABLE_ENTRY("TrackDriverForMiniDumpLog", trackDriverForMiniDumpLog, defaultTrue);
 #else
     trackDriverForMiniDumpLog = 0;
+    ADD_TABLE_ENTRY("TrackDriverForMiniDumpLog", trackDriverForMiniDumpLog, zero);
 #endif
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"TrackDriverForMiniDumpLog";
-    paramTable[i].EntryContext  = &trackDriverForMiniDumpLog;
-    paramTable[i].DefaultType   = REG_DWORD;
-#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
-    paramTable[i].DefaultData    = &defaultTrue;
-#else
-    paramTable[i].DefaultData    = &zero;
-#endif
-    paramTable[i].DefaultLength = sizeof(ULONG);
 
     requestParentOptimizationOn = (ULONG) TRUE;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"RequestParentOptimizationOn";
-    paramTable[i].EntryContext  = &requestParentOptimizationOn;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &defaultTrue;
-    paramTable[i].DefaultLength = sizeof(ULONG);
+    ADD_TABLE_ENTRY("RequestParentOptimizationOn", requestParentOptimizationOn, defaultTrue);
 
     dsfValue = 0;
-    i++;
-
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"DsfOn";
-    paramTable[i].EntryContext  = &dsfValue;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
-
+    ADD_TABLE_ENTRY("DsfOn", dsfValue, zero);
+    
     removeLockOptionFlags = 0;
-    i++;
+    ADD_TABLE_ENTRY("RemoveLockOptionFlags", removeLockOptionFlags, zero);
 
-    paramTable[i].Flags         = RTL_QUERY_REGISTRY_DIRECT;
-    paramTable[i].Name          = L"RemoveLockOptionFlags";
-    paramTable[i].EntryContext  = &removeLockOptionFlags;
-    paramTable[i].DefaultType   = REG_DWORD;
-    paramTable[i].DefaultData   = &zero;
-    paramTable[i].DefaultLength = sizeof(ULONG);
-
+    //
+    // The last entry's QueryRoutine and Name fields must be NULL,
+    // because that marks the end of the query table.
+    //
     ASSERT(i < sizeof(paramTable) / sizeof(paramTable[0]));
+    ASSERT(paramTable[i].QueryRoutine == NULL);
+    ASSERT(paramTable[i].Name == NULL);
 
 #if (FX_CORE_MODE==FX_CORE_USER_MODE)
 
@@ -1738,3 +1921,4 @@ FX_DRIVER_GLOBALS::WaitForSignal(
 }
 
 } // extern "C"
+
