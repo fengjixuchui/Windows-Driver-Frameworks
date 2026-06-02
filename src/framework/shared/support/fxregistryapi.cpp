@@ -142,6 +142,12 @@ WDFEXPORT(WdfRegistryOpenKey)(
         status = pKey->Open(parentHandle, KeyName, DesiredAccess);
 
         if (NT_SUCCESS(status)) {
+
+            if ((DesiredAccess & (GENERIC_ALL | GENERIC_WRITE | DELETE | KEY_WRITE)) != 0) {
+
+                pKey->VerifyStateSeparationRegistryPolicy();
+            }
+
             *Key = keyHandle;
         }
         else {
@@ -188,6 +194,7 @@ WDFEXPORT(WdfRegistryCreateKey)(
     NTSTATUS status;
     WDFKEY keyHandle;
     HANDLE parentHandle;
+    ULONG localDisposition;
 
     pFxDriverGlobals = GetFxDriverGlobals(DriverGlobals);
 
@@ -259,9 +266,17 @@ WDFEXPORT(WdfRegistryCreateKey)(
                               KeyName,
                               DesiredAccess,
                               CreateOptions,
-                              CreateDisposition);
+                              &localDisposition);
 
         if (NT_SUCCESS(status)) {
+
+            pKey->VerifyStateSeparationRegistryPolicy();
+
+            if (CreateDisposition != NULL) {
+
+                *CreateDisposition = localDisposition;
+            }
+
             *Key = keyHandle;
         }
         else {
@@ -359,6 +374,21 @@ WDFEXPORT(WdfRegistryRemoveKey)(
         return status;
     }
 
+#if (FX_CORE_MODE == FX_CORE_USER_MODE)
+    //
+    // DeleteKey isn't implemented for user mode so there's nothing to verify.
+    //
+
+#else
+    //
+    // DeleteKey is implemented for kernel mode; verify the access conforms to
+    // registry policy.
+    //
+
+    pKey->VerifyStateSeparationRegistryPolicy();
+
+#endif
+
     status = pKey->DeleteKey();
     if (NT_SUCCESS(status)) {
         //
@@ -407,6 +437,11 @@ WDFEXPORT(WdfRegistryRemoveValue)(
     FxPointerNotNull(pFxDriverGlobals, ValueName);
 
     status = ZwDeleteValueKey(pKey->GetHandle(), (PUNICODE_STRING) ValueName);
+
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
 
     return status;
 }
@@ -463,19 +498,15 @@ WDFEXPORT(WdfRegistryQueryValue)(
                                    ValueLengthQueried,
                                    ValueType);
     if (!NT_SUCCESS(status)) {
-        UCHAR traceLevel = TRACE_LEVEL_ERROR;
-
         //
-        // Label message as Verbose if this is the known pattern of
+        // Only log the error if it's not the known pattern of
         // passing a 0-length NULL buffer to query the required buffer size.
         //
-        if (status == STATUS_BUFFER_OVERFLOW && Value == NULL && ValueLength == 0) {
-            traceLevel = TRACE_LEVEL_VERBOSE;
+        if (!(status == STATUS_BUFFER_OVERFLOW && Value == NULL && ValueLength == 0)) {
+            DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
+                                "WDFKEY %p QueryValue failed, %!STATUS!",
+                                Key, status);
         }
-        
-        DoTraceLevelMessage(pFxDriverGlobals, traceLevel, TRACINGERROR,
-                            "WDFKEY %p QueryValue failed, %!STATUS!",
-                            Key, status);
     }
 
     return status;
@@ -557,7 +588,7 @@ WDFEXPORT(WdfRegistryQueryMemory)(
         return status;
     }
 
-    dataBuffer = FxPoolAllocate(pFxDriverGlobals, PagedPool, dataLength);
+    dataBuffer = FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, dataLength);
     if (dataBuffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -694,7 +725,7 @@ WDFEXPORT(WdfRegistryQueryMultiString)(
         return status;
     }
 
-    dataBuffer = FxPoolAllocate(pFxDriverGlobals, PagedPool, dataLength);
+    dataBuffer = FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, dataLength);
     if (dataBuffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -873,7 +904,7 @@ WDFEXPORT(WdfRegistryQueryUnicodeString)(
             return status;
         }
 
-        dataBuffer = FxPoolAllocate(pFxDriverGlobals, PagedPool, dataLength);
+        dataBuffer = FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, dataLength);
         if (dataBuffer == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1007,7 +1038,7 @@ WDFEXPORT(WdfRegistryQueryString)(
         return status;
     }
 
-    dataBuffer = FxPoolAllocate(pFxDriverGlobals, PagedPool, dataLength);
+    dataBuffer = FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, dataLength);
     if (dataBuffer == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1177,6 +1208,11 @@ WDFEXPORT(WdfRegistryAssignValue)(
 
     status = pKey->SetValue(ValueName, ValueType, Value, ValueLength);
 
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
+
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
                             "WDFKEY %p SetValue, %!STATUS!", Key, status);
@@ -1270,6 +1306,11 @@ WDFEXPORT(WdfRegistryAssignMemory)(
 
     status = pKey->SetValue(ValueName, ValueType, pBuffer, length);
 
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
+
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
                             "WDFKEY handle %p SetValue, %!STATUS!", Key, status);
@@ -1317,6 +1358,11 @@ WDFEXPORT(WdfRegistryAssignULong)(
     }
 
     status = pKey->SetValue(ValueName, REG_DWORD, &Value, sizeof(Value));
+
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
 
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
@@ -1381,7 +1427,7 @@ WDFEXPORT(WdfRegistryAssignUnicodeString)(
     // Buffer must be NULL terminated and Length of the buffer must also include the NULL
     // Allocate a temporary buffer and NULL terminate it.
     //
-    tempValueBuf = (PWCHAR) FxPoolAllocate(pFxDriverGlobals, PagedPool, length);
+    tempValueBuf = (PWCHAR) FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, length);
 
     if (tempValueBuf == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1403,6 +1449,11 @@ WDFEXPORT(WdfRegistryAssignUnicodeString)(
     status = pKey->SetValue(ValueName, REG_SZ, tempValueBuf, length);
 
     FxPoolFree(tempValueBuf);
+
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
 
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage( pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
@@ -1462,6 +1513,11 @@ WDFEXPORT(WdfRegistryAssignString)(
                             REG_SZ,
                             pString->Buffer(),
                             pString->ByteLength(TRUE));
+
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
 
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,
@@ -1542,7 +1598,7 @@ WDFEXPORT(WdfRegistryAssignMultiString)(
         return status;
     }
 
-    pValue = (PWCHAR) FxPoolAllocate(pFxDriverGlobals, PagedPool, length);
+    pValue = (PWCHAR) FxPoolAllocate2(pFxDriverGlobals, POOL_FLAG_PAGED, length);
 
     if (pValue == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1557,6 +1613,11 @@ WDFEXPORT(WdfRegistryAssignMultiString)(
     FxCopyMultiSz(pValue, pCollection);
 
     status = pKey->SetValue(ValueName, REG_MULTI_SZ, pValue, length);
+
+    if (NT_SUCCESS(status)) {
+
+        pKey->VerifyStateSeparationRegistryPolicy();
+    }
 
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage( pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGERROR,

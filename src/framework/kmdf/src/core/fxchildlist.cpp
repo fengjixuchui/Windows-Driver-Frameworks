@@ -89,11 +89,7 @@ FxDeviceDescriptionEntry::operator new(
 
     UNREFERENCED_PARAMETER(AllocatorBlock);
 
-    p = FxPoolAllocate(FxDriverGlobals, NonPagedPool, TotalDescriptionSize);
-
-    if (p != NULL) {
-        RtlZeroMemory(p, TotalDescriptionSize);
-    }
+    p = FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_NON_PAGED, TotalDescriptionSize);
 
     return p;
 }
@@ -2567,7 +2563,7 @@ FxChildList::ProcessBusRelations(
     size = _ComputeRelationsSize(totalCount);
 
     pNewRelations = (PDEVICE_RELATIONS)
-        ExAllocatePoolWithTag(PagedPool, size, pFxDriverGlobals->Tag);
+        ExAllocatePool2(POOL_FLAG_PAGED, size, pFxDriverGlobals->Tag);
 
     if (pNewRelations == NULL) {
         //
@@ -2703,8 +2699,6 @@ FxChildList::ProcessBusRelations(
 
         goto Done;
     }
-
-    RtlZeroMemory(pNewRelations, size);
 
     if (pPriorRelations != NULL && pPriorRelations->Count > 0) {
         DoTraceLevelMessage(
@@ -2907,7 +2901,13 @@ FxChildList::PostParentToD0(
             continue;
         }
 
-        if (pEntry->m_Pdo != NULL) {
+        //
+        // A child PDO that does not have a power dependency on the parent will
+        // never wait for this event, so don't post it.
+        //
+        if ((pEntry->m_Pdo != NULL) &&
+            (pEntry->m_Pdo->GetPdoPkg()->HasPowerDependencyOnParent() != FALSE)) {
+
             pEntry->m_Pdo->m_PkgPnp->PowerProcessEvent(PowerParentToD0);
         }
     }

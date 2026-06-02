@@ -302,6 +302,10 @@ FxDevice::PdoInitialize(
             pPkgPdo->m_AllowForwardRequestToParent = TRUE;
         }
 
+        if (DeviceInit->Pdo.NoPowerDependencyOnParent) {
+            pPkgPdo->m_HasPowerDependencyOnParent = FALSE;
+        }
+
         status = m_PkgWmi->PostCreateDeviceInitialize();
         if (!NT_SUCCESS(status)) {
             return status;
@@ -594,7 +598,7 @@ FxDevice::CreateSymbolicLink(
             return status;
         }
 
-        pBuffer = (PWSTR) FxPoolAllocate(FxDriverGlobals, PagedPool, length);
+        pBuffer = (PWSTR) FxPoolAllocate2(FxDriverGlobals, POOL_FLAG_PAGED, length);
         if (pBuffer == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
 

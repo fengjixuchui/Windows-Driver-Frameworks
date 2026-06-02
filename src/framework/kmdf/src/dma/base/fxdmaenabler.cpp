@@ -594,9 +594,9 @@ FxDmaEnabler::ConfigureSystemAdapter(
         // Allocate the SG list.
         //
         m_SGList.SystemProfile.List =
-            (PSCATTER_GATHER_LIST) ExAllocatePoolWithTag(NonPagedPool,
-                                                         systemSGListSize,
-                                                         GetDriverGlobals()->Tag);
+            (PSCATTER_GATHER_LIST) ExAllocatePool2(POOL_FLAG_NON_PAGED,
+                                                   systemSGListSize,
+                                                   GetDriverGlobals()->Tag);
 
         if (m_SGList.SystemProfile.List == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
@@ -753,7 +753,7 @@ FxDmaEnabler::ConfigureBusMasterAdapters(
             ExInitializeNPagedLookasideList( &m_SGList.ScatterGatherProfile.Lookaside,
                                              NULL, // Allocate  OPTIONAL
                                              NULL, //  Free  OPTIONAL
-                                             0, // Flag - Reserved. Must be zero.
+                                             POOL_NX_ALLOCATION,
                                              m_SGListSize,
                                              GetDriverGlobals()->Tag,
                                              0 ); // Depth - Reserved. Must be zero.

@@ -23,6 +23,8 @@ Revision History:
 #ifndef __FXDEVICEINIT_HPP__
 #define __FXDEVICEINIT_HPP__
 
+#include "FxUserObject.hpp"
+
 enum FxDeviceInitType {
     FxDeviceInitTypeFdo = 0,
     FxDeviceInitTypePdo,
@@ -31,6 +33,18 @@ enum FxDeviceInitType {
 };
 
 struct FileObjectInit {
+
+    FileObjectInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&Class, sizeof(Class));
+        RtlZeroMemory(&Attributes, sizeof(Attributes));
+        RtlZeroMemory(&Callbacks, sizeof(Callbacks));
+        AutoForwardCleanupClose = WdfUseDefault;
+        Set = FALSE;
+    }
+
     WDF_FILEOBJECT_CLASS Class;
 
     WDF_OBJECT_ATTRIBUTES Attributes;
@@ -43,6 +57,16 @@ struct FileObjectInit {
 };
 
 struct SecurityInit {
+
+    SecurityInit(
+        VOID
+        )
+    {
+        Sddl = NULL;
+        RtlZeroMemory(&DeviceClass, sizeof(DeviceClass));
+        DeviceClassSet = FALSE;
+    }
+
     FxString* Sddl;
 
     GUID DeviceClass;
@@ -51,13 +75,33 @@ struct SecurityInit {
 };
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
-struct CompanionInit
-{
+struct CompanionInit {
+
+    CompanionInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&CompanionEventCallbacks, sizeof(CompanionEventCallbacks));
+    }
+
     WDF_COMPANION_EVENT_CALLBACKS CompanionEventCallbacks;
 };
 #endif
 
 struct PnpPowerInit {
+
+    PnpPowerInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&PnpPowerEventCallbacks, sizeof(PnpPowerEventCallbacks));
+        RtlZeroMemory(&PolicyEventCallbacks, sizeof(PolicyEventCallbacks));
+        PnpStateCallbacks = NULL;
+        PowerStateCallbacks = NULL;
+        PowerPolicyStateCallbacks = NULL;
+        PowerPolicyOwner = WdfUseDefault;
+    }
+
     WDF_PNPPOWER_EVENT_CALLBACKS PnpPowerEventCallbacks;
 
     WDF_POWER_POLICY_EVENT_CALLBACKS PolicyEventCallbacks;
@@ -72,6 +116,18 @@ struct PnpPowerInit {
 };
 
 struct FdoInit {
+
+    FdoInit(
+        VOID
+        )
+    {
+        RtlZeroMemory(&EventCallbacks, sizeof(EventCallbacks));
+        RtlZeroMemory(&ListConfig, sizeof(ListConfig));
+        RtlZeroMemory(&ListConfigAttributes, sizeof(ListConfigAttributes));
+        Filter = FALSE;
+        PhysicalDevice = NULL;
+    }
+
     WDF_FDO_EVENT_CALLBACKS EventCallbacks;
 
     WDF_CHILD_LIST_CONFIG ListConfig;
@@ -257,6 +313,19 @@ public:
         _In_ PWDF_IO_TYPE_CONFIG IoTypeConfig
         );
 
+    NTSTATUS
+    AllocateCxContext(
+        _In_  PFX_DRIVER_GLOBALS     CxDriverGlobals,
+        _In_  PWDF_OBJECT_ATTRIBUTES ContextAttributes,
+        _Outptr_opt_
+              PVOID*                 Context
+        );
+
+    PVOID
+    GetCxTypedContext(
+        _In_ PCWDF_OBJECT_CONTEXT_TYPE_INFO TypeInfo
+        );
+
 public:
     PFX_DRIVER_GLOBALS DriverGlobals;
 
@@ -311,6 +380,11 @@ public:
     //
     LIST_ENTRY      CxDeviceInitListHead;
 
+    //
+    // Hold contexts allocated by class extensions.
+    //
+    FxUserObject*           CxContextObject;
+
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 
     CompanionInit   CompanionInit;
@@ -324,7 +398,7 @@ public:
     // Direct I/O threshold
     //
     ULONG DirectTransferThreshold;
-    
+
     //
     // Weak reference to host side device stack
     //
@@ -346,7 +420,7 @@ public:
     HKEY PdoKey;
 
     //
-    // Registry sub-path name containing driver configuration information. 
+    // Registry sub-path name containing driver configuration information.
     // The registry path name is relative to the "device key".
     //
     PWSTR ConfigRegistryPath;
@@ -361,7 +435,7 @@ public:
     //
     ULONG DriverID;
 #endif
-    
+
 };
 
 #endif __FXDEVICEINIT_HPP__

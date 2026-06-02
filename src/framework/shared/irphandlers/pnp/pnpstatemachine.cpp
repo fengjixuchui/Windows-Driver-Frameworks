@@ -108,7 +108,7 @@ const PNP_EVENT_TARGET_STATE FxPkgPnp::m_PnpRemovedPdoWaitOtherStates[] =
 
 const PNP_EVENT_TARGET_STATE FxPkgPnp::m_PnpRestartingOtherStates[] =
 {
-    { PnpEventPwrPolStartFailed, WdfDevStatePnpFailedOwnHardware DEBUGGED_EVENT },
+    { PnpEventPwrPolStartFailed, WdfDevStatePnpHardwareAvailablePowerPolicyFailed DEBUGGED_EVENT },
     { PnpEventNull, WdfDevStatePnpNull },
 };
 
@@ -1511,7 +1511,7 @@ Routine Description:
     path.
 
 Arguments:
-    This - instance of the state machien
+    This - instance of the state machine
 
 Return Value:
     WdfDevStatePnpFailedOwnHardware
@@ -1708,11 +1708,12 @@ Return Value:
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_INFORMATION, TRACINGPNP,
             "Failing QueryRemoveDevice due to open special file counts "
-            "(paging %d, hiber %d, dump %d, boot %d)",
+            "(paging %d, hiber %d, dump %d, boot %d, guest assigned %d)",
             This->GetUsageCount(WdfSpecialFilePaging),
             This->GetUsageCount(WdfSpecialFileHibernation),
             This->GetUsageCount(WdfSpecialFileDump),
-            This->GetUsageCount(WdfSpecialFileBoot));
+            This->GetUsageCount(WdfSpecialFileBoot),
+            This->GetUsageCount(WdfSpecialFileGuestAssigned));
 
         status = STATUS_DEVICE_NOT_READY;
     }
@@ -1954,11 +1955,12 @@ Return Value:
         DoTraceLevelMessage(
             This->GetDriverGlobals(), TRACE_LEVEL_INFORMATION, TRACINGPNP,
             "Failing QueryStopDevice due to open special file counts (paging %d,"
-            " hiber %d, dump %d, boot %d)",
+            " hiber %d, dump %d, boot %d, guest assigned %d)",
             This->GetUsageCount(WdfSpecialFilePaging),
             This->GetUsageCount(WdfSpecialFileHibernation),
             This->GetUsageCount(WdfSpecialFileDump),
-            This->GetUsageCount(WdfSpecialFileBoot));
+            This->GetUsageCount(WdfSpecialFileBoot),
+            This->GetUsageCount(WdfSpecialFileGuestAssigned));
 
         status = STATUS_DEVICE_NOT_READY;
     }
@@ -2030,8 +2032,8 @@ Return Value:
     //
     // Mark the device as removed.
     //
-    m_PnpStateAndCaps.Value &= ~FxPnpStateRemovedMask;
-    m_PnpStateAndCaps.Value |= FxPnpStateRemovedTrue;
+    m_PnpState.Value &= ~FxPnpStateRemovedMask;
+    m_PnpState.Value |= FxPnpStateRemovedTrue;
 
     //
     // Now call the driver and tell it to cleanup all its software state.
@@ -2358,7 +2360,7 @@ Return Value:
 {
 
     This->m_AchievedStart = TRUE;
-    
+
     //
     // Log Telemetry event for the FDO
     //
@@ -2494,7 +2496,7 @@ Return Value:
         //
         // We can handle remove out of the init state, revert back to that state
         //
-        if ((matched == FALSE) || 
+        if ((matched == FALSE) ||
             (progress < FxCxCallbackProgressClientCalled)) {
             //
             // Wait for the remove irp to come in
@@ -3474,7 +3476,10 @@ Return Value:
         //
         ASSERT(pDeviceInterface->m_SymbolicLinkName.Buffer != NULL);
 #endif
-        pDeviceInterface->SetState(TRUE);
+
+        if (pDeviceInterface->m_AutoEnableOnFirstStart) {
+            pDeviceInterface->SetState(TRUE);
+        }
 
         status = STATUS_SUCCESS;
     }
@@ -3509,7 +3514,7 @@ Routine Description:
 Arguments:
     ResourcesMatched - indicates to the caller what stage failed if !NT_SUCCESS
                         is returned
-    Progress - indicates to the caller what stage the API failed if 
+    Progress - indicates to the caller what stage the API failed if
                         !NT_SUCCESS is returned
 
 Return Value:
@@ -3532,12 +3537,12 @@ Return Value:
     // a need to set these values, the driver can set them in
     // EvtDevicePrepareHardware.
     //
-    m_PnpStateAndCaps.Value &= ~(FxPnpStateRemovedMask |
-                                 FxPnpStateFailedMask |
-                                 FxPnpStateResourcesChangedMask);
-    m_PnpStateAndCaps.Value |= (FxPnpStateRemovedUseDefault |
-                                FxPnpStateFailedUseDefault |
-                                FxPnpStateResourcesChangedUseDefault);
+    m_PnpState.Value &= ~(FxPnpStateRemovedMask |
+                          FxPnpStateFailedMask |
+                          FxPnpStateResourcesChangedMask);
+    m_PnpState.Value |= (FxPnpStateRemovedUseDefault |
+                         FxPnpStateFailedUseDefault |
+                         FxPnpStateResourcesChangedUseDefault);
 
     //
     // This will parse the resources and setup all the WDFINTERRUPT handles
@@ -3946,10 +3951,10 @@ Returns:
     // states and the start succeeds, we would endlessly report that our
     // resources have changed and be restarted over and over.
     //
-    m_PnpStateAndCaps.Value &= ~(FxPnpStateFailedMask |
-                                 FxPnpStateResourcesChangedMask);
-    m_PnpStateAndCaps.Value |= (FxPnpStateFailedUseDefault |
-                                FxPnpStateResourcesChangedUseDefault);
+    m_PnpState.Value &= ~(FxPnpStateFailedMask |
+                          FxPnpStateResourcesChangedMask);
+    m_PnpState.Value |= (FxPnpStateFailedUseDefault |
+                         FxPnpStateResourcesChangedUseDefault);
 
     irp.SetIrp(m_PendingPnPIrp);
     pResourcesRaw = irp.GetParameterAllocatedResources();
@@ -4583,19 +4588,19 @@ Routine Description:
             the max restart count, ask for a reenumeration.  If it exceeds the
             max, do not ask for a reenumeration.
         d)  if the current time is after the period stat time and exceeds the
-            maximum period, and if the device as reached the started state, 
+            maximum period, and if the device as reached the started state,
             reset the period, count, and started state, then ask for a
             reenumeration.
 
 Considerations:
     There is a reenumeration loop that a device can get caught in. If a device
-    takes more than m_RestartTimePeriodMaximum to fail m_RestartCountMaximum 
-    times then the device will be caught in this loop. If it is failing on the 
-    way to PnpEventStarted then the device will likely cause a 9F bugcheck. 
-    This is because they hold a power lock while in this loop. If the device 
-    fails after PnpEventStarted then pnp can progress and the device can loop 
-    here indefinitely. We have shipped with this behavior for several releases, 
-    so we are hesitant to completely change this behavior. The concern is that 
+    takes more than m_RestartTimePeriodMaximum to fail m_RestartCountMaximum
+    times then the device will be caught in this loop. If it is failing on the
+    way to PnpEventStarted then the device will likely cause a 9F bugcheck.
+    This is because they hold a power lock while in this loop. If the device
+    fails after PnpEventStarted then pnp can progress and the device can loop
+    here indefinitely. We have shipped with this behavior for several releases,
+    so we are hesitant to completely change this behavior. The concern is that
     a device out there relies on this behavior.
 
 Arguments:
@@ -4615,7 +4620,7 @@ Return Value:
     DECLARE_CONST_UNICODE_STRING(valueNameStartTime, RESTART_START_TIME_NAME);
     DECLARE_CONST_UNICODE_STRING(valueNameCount, RESTART_COUNT_NAME);
     DECLARE_CONST_UNICODE_STRING(valueNameStartAchieved, RESTART_START_ACHIEVED_NAME);
-    
+
     count = 0;
     started = FALSE;
     writeTick = FALSE;
@@ -4626,12 +4631,12 @@ Return Value:
 
     started = m_AchievedStart;
     if (started) {
-        // 
+        //
         // Save the fact the driver started without failing
         //
         writeStarted = TRUE;
     }
-        
+
 
     //
     // If the key was created right now, there is nothing to check, just write out
@@ -4739,7 +4744,7 @@ Return Value:
                         started = value != 0;
                         status = STATUS_SUCCESS;
                     }
-                    
+
                     if (started) {
                         //
                         // Exceeded the time limit.  This is treated as a reset of
@@ -4751,7 +4756,7 @@ Return Value:
                         count = 1;
 
                         //
-                        // Erase the fact the driver once started and 
+                        // Erase the fact the driver once started and
                         // make it do it again to get another 5 attempts to
                         // restart.
                         //

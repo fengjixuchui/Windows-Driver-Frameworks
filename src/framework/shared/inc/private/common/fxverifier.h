@@ -33,7 +33,7 @@ extern "C" {
 
 enum FxEnhancedVerifierBitFlags {
     //
-    // low 2 bytes are used for function table Hooking  
+    // low 2 bytes are used for function table Hooking
     //
     FxEnhancedVerifierCallbackIrqlAndCRCheck      = 0x00000001,
     //
@@ -50,12 +50,13 @@ enum FxEnhancedVerifierBitFlags {
 
     //
     // higher nibble of 3rd byte for performance analysis
-    // 
+    //
     FxEnhancedVerifierPerformanceAnalysisMask      = 0x00f00000,
 };
 
 #if (FX_CORE_MODE == FX_CORE_USER_MODE)
 #define FxVerifierBugCheck(FxDriverGlobals, Error, ...)              \
+    FxVerifierBugCheckWorker(FxDriverGlobals, Error, __VA_ARGS__);   \
     FX_VERIFY_WITH_NAME(DRIVER(BadAction, Error),                    \
                         TRAPMSG("WDF Violation: Please check"        \
                         "tracelog for a description of this error"), \
@@ -65,10 +66,6 @@ enum FxEnhancedVerifierBitFlags {
         FxVerifierBugCheckWorker(FxDriverGlobals, __VA_ARGS__);
 #endif
 
-//
-// FxVerifierDbgBreakPoint and FxVerifierBreakOnDeviceStateError are mapped
-// to FX_VERIFY in UMDF and break regardless of any flags
-//
 __inline
 VOID
 FxVerifierDbgBreakPoint(
@@ -86,8 +83,14 @@ FxVerifierDbgBreakPoint(
              FxDriverGlobals->Public.DriverName, ext,
              FxDriverGlobals->Public.DriverName, ext
              );
-    
+
     if (FxDriverGlobals->FxVerifierDbgBreakOnError) {
+
+        //
+        // Indicate to the BugCheck callback filter which IFR to dump.
+        //
+        FxDriverGlobals->FxForceLogsInMiniDump = TRUE;
+
         Mx::MxDbgBreakPoint();
     } else {
         Mx::MxDbgPrint("Turn on framework verifier for %s.%s to automatically "
@@ -109,11 +112,17 @@ FxVerifierBreakOnDeviceStateError(
 #endif
 
     Mx::MxDbgPrint("WDF detected potentially invalid device state in %s.%s. "
-             "Dump the driver log (!wdflogdump %s.$s) for more information.\n",
+             "Dump the driver log (!wdflogdump %s.%s) for more information.\n",
              FxDriverGlobals->Public.DriverName, ext,
              FxDriverGlobals->Public.DriverName, ext);
 
     if (FxDriverGlobals->FxVerifierDbgBreakOnDeviceStateError) {
+
+        //
+        // Indicate to the BugCheck callback filter which IFR to dump.
+        //
+        FxDriverGlobals->FxForceLogsInMiniDump = TRUE;
+
         Mx::MxDbgBreakPoint();
     } else {
         Mx::MxDbgPrint("Turn on framework verifier for %s.%s to automatically "
@@ -128,7 +137,7 @@ IsFxVerifierFunctionTableHooking(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    if (FxDriverGlobals->FxEnhancedVerifierOptions & 
+    if (FxDriverGlobals->FxEnhancedVerifierOptions &
             FxEnhancedVerifierFunctionTableHookMask) {
         return TRUE;
     }
@@ -138,7 +147,9 @@ IsFxVerifierFunctionTableHooking(
 }
 
 VOID
+#if FX_CORE_MODE == FX_CORE_KERNEL_MODE
 __declspec(noreturn)
+#endif
 FxVerifierBugCheckWorker(
     __in     PFX_DRIVER_GLOBALS FxDriverGlobals,
     __in     WDF_BUGCHECK_CODES WdfBugCheckCode,
@@ -217,7 +228,7 @@ IsFxVerifierTestForwardProgressFailAll(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    if (FxDriverGlobals->FxEnhancedVerifierOptions & 
+    if (FxDriverGlobals->FxEnhancedVerifierOptions &
             FxEnhancedVerifierForwardProgressFailAll) {
         return TRUE;
     }
@@ -232,7 +243,7 @@ IsFxVerifierTestForwardProgressFailRandom(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    if (FxDriverGlobals->FxEnhancedVerifierOptions & 
+    if (FxDriverGlobals->FxEnhancedVerifierOptions &
             FxEnhancedVerifierForwardProgressFailRandom) {
         return TRUE;
     }
@@ -247,7 +258,7 @@ IsFxVerifierTestForwardProgress(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    if (FxDriverGlobals->FxEnhancedVerifierOptions & 
+    if (FxDriverGlobals->FxEnhancedVerifierOptions &
             FxEnhancedVerifierForwardProgressMask) {
         return TRUE;
     }
@@ -262,7 +273,7 @@ IsFxPerformanceAnalysis(
     __in PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    if (FxDriverGlobals->FxEnhancedVerifierOptions & 
+    if (FxDriverGlobals->FxEnhancedVerifierOptions &
             FxEnhancedVerifierPerformanceAnalysisMask) {
         return TRUE;
     }

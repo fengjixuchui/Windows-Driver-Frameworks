@@ -376,7 +376,6 @@ FxDevice::_Create(
     WDFOBJECT           object;
     PLIST_ENTRY         pNext;
     PWDFCXDEVICE_INIT   pCxInit;
-    FxWdmDeviceExtension* wdmDeviceExtension;
 
     *Device = NULL;
     pInit = *DeviceInit;
@@ -439,6 +438,19 @@ FxDevice::_Create(
     }
 
     //
+    // If class extensions allocated any context, move them to FxDevice
+    //
+    // This line cannot be put before FxDevice->Commit, or else if Commit fails,
+    // those context's cleanup callback will not be called.
+    //
+    if (pInit->CxContextObject != NULL) {
+        status = pInit->CxContextObject->MoveContexts(pDevice);
+        if (!NT_SUCCESS(status)) {
+            goto Done;
+        }
+    }
+
+    //
     // NOTE: ---> DO NOT FAIL FROM HERE FORWARD <---
     //
 
@@ -476,6 +488,8 @@ FxDevice::_Create(
     }
 
 #if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+    FxWdmDeviceExtension* wdmDeviceExtension;
+
     wdmDeviceExtension = _GetFxWdmExtension(pDevice->GetDeviceObject());
     if (wdmDeviceExtension->RemoveLockOptionFlags &
             WDF_REMOVE_LOCK_OPTION_ACQUIRE_FOR_IO) {
@@ -492,9 +506,6 @@ FxDevice::_Create(
     if (pDevice->m_SelfIoTargetNeeded) {
         pDevice->SetStackSize(pDevice->GetStackSize()+1);
     }
-
-#else
-    UNREFERENCED_PARAMETER(wdmDeviceExtension);
 #endif
 
     //
@@ -743,6 +754,10 @@ Return Value:
     //
     // Setup and initialize the Class Extension chain.
     //
+    // The order of class extension callbacks is the reverse of the order that
+    // WdfCxDeviceInitAllocate is called. This is to prioritize CX's that link
+    // to other CX's. A Client->Cx1->CX2 will have CX2 callbacks called first.
+    //
     for (next = DeviceInit->CxDeviceInitListHead.Flink;
          next != &DeviceInit->CxDeviceInitListHead;
          next = next->Flink) {
@@ -783,7 +798,7 @@ Return Value:
             ULONG callback;
             for (callback = 0 ; callback < FxCxCallbackMax; callback++) {
                 status = FxPrePostCallback::_InitializeContext(
-                            GetDriverGlobals(), 
+                            GetDriverGlobals(),
                             cxInit,
                             &cxDeviceInfo->CxPnpPowerCallbackContexts[callback],
                             (FxCxCallbackType) callback);
@@ -834,7 +849,7 @@ Return Value:
     Mx::MxInitializeNPagedLookasideList(&m_RequestLookasideList,
                                     NULL,
                                     NULL,
-                                    0,
+                                    POOL_NX_ALLOCATION,
                                     m_RequestLookasideListElementSize,
                                     pGlobals->Tag,
                                     0);
@@ -2184,14 +2199,14 @@ FxDevice::_ValidateOpenKeyParams(
     )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    
+
     //
     // This function should be called with exactly one valid WDFDEVICE_INIT
     // or one valid FxDevice object. Supplying neither or both is an error.
     //
     if ((DeviceInit == NULL && Device == NULL) ||
         (DeviceInit != NULL && Device != NULL)) {
-        
+
         status = STATUS_INVALID_PARAMETER;
         DoTraceLevelMessage(
             FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,

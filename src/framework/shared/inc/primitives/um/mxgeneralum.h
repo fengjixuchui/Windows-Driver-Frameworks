@@ -53,7 +53,7 @@ typedef InterruptSynchronizeRoutine MdInterruptSynchronizeRoutineType, *MdInterr
 
 typedef struct _CALLBACK_OBJECT *PCALLBACK_OBJECT;
 
-typedef 
+typedef
 VOID
 CALLBACK_FUNCTION(
         __in PVOID CallbackContext,
@@ -100,7 +100,7 @@ Mx::MxGetCurrentThread(
     //
     // We can't use GetCurrentThread as it returns a pseudo handle
     // which would have same numeric value for different threads
-    // We could use DuplicateHandle to get real handle but that has the 
+    // We could use DuplicateHandle to get real handle but that has the
     // following problems:
     //    1) It returns different handle values for the same thread
     //       if called again without closing handle.
@@ -150,12 +150,13 @@ Mx::MxGetCurrentIrql(
     return PASSIVE_LEVEL;
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_SET __WARNING_RETURN_UNINIT_VAR)
 Mx::MxRaiseIrql(
-    __in KIRQL  NewIrql,
-    __out PKIRQL  OldIrql
+    KIRQL  NewIrql,
+    PKIRQL OldIrql
     )
 {
     UNREFERENCED_PARAMETER(NewIrql);
@@ -164,11 +165,12 @@ Mx::MxRaiseIrql(
     DO_NOTHING();
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_USED)
 Mx::MxLowerIrql(
-    __in KIRQL  NewIrql
+    KIRQL NewIrql
     )
 {
     UNREFERENCED_PARAMETER(NewIrql);
@@ -293,37 +295,6 @@ Mx::MxDelayExecutionThread(
 }
 
 __inline
-PVOID
-Mx::MxGetSystemRoutineAddress(
-    __in MxFuncName FuncName
-    )
-/*++
-Description:
-
-    This function is meant to be called only by mode agnostic code
-    System routine is assumed to be in ntdll.dll.
-
-    This is because system routines (Rtl*) that can be used both
-    in kernel mode as well as user mode reside in ntdll.dll.
-    Kernel32.dll contains the user mode only Win32 API.
-
-Arguments:
-
-    MxFuncName FuncName -
-
-Return Value:
-
-    NTSTATUS Status code.
---*/
-{
-    HMODULE hMod;
-
-    hMod = GetModuleHandleW(L"ntdll.dll");
-
-    return GetProcAddress(hMod, FuncName);
-}
-
-__inline
 VOID
 Mx::MxReferenceObject(
     __in PVOID Object
@@ -379,7 +350,7 @@ __inline
 NTSTATUS
 Mx::MxAcquireRemoveLock(
     __in MdRemoveLock  RemoveLock,
-    __in_opt PVOID  Tag 
+    __in_opt PVOID  Tag
     )
 {
     UNREFERENCED_PARAMETER(Tag);
@@ -396,7 +367,7 @@ Mx::MxAcquireRemoveLock(
     else {
         if (0 == InterlockedDecrement(&RemoveLock->IoCount)) {
             if (! SetEvent(RemoveLock->RemoveEvent)) {
-                Mx::MxBugCheckEx(WDF_VIOLATION, 
+                Mx::MxBugCheckEx(WDF_VIOLATION,
                                 0, 0, 0, 0);
             }
         }
@@ -410,7 +381,7 @@ __inline
 VOID
 Mx::MxReleaseRemoveLock(
     __in MdRemoveLock  RemoveLock,
-    __in PVOID  Tag 
+    __in PVOID  Tag
     )
 {
     UNREFERENCED_PARAMETER(Tag);
@@ -428,7 +399,7 @@ Mx::MxReleaseRemoveLock(
         // that it's safe to go ahead.
         //
         if (! SetEvent(RemoveLock->RemoveEvent)) {
-            Mx::MxBugCheckEx(WDF_VIOLATION, 
+            Mx::MxBugCheckEx(WDF_VIOLATION,
                             0, 0, 0, 0);
         }
     }
@@ -438,7 +409,7 @@ __inline
 VOID
 Mx::MxReleaseRemoveLockAndWait(
     __in MdRemoveLock  RemoveLock,
-    __in PVOID  Tag 
+    __in PVOID  Tag
     )
 {
     UNREFERENCED_PARAMETER(Tag);
@@ -452,7 +423,7 @@ Mx::MxReleaseRemoveLockAndWait(
 
     if (0 < InterlockedDecrement (&RemoveLock->IoCount)) {
         retVal = WaitForSingleObject(RemoveLock->RemoveEvent,
-                        REMOVE_LOCK_RELEASE_TIMEOUT_IN_SECONDS*1000); 
+                        REMOVE_LOCK_RELEASE_TIMEOUT_IN_SECONDS*1000);
         ASSERT(retVal == WAIT_OBJECT_0);
     }
 
@@ -476,11 +447,12 @@ Mx::MxHasEnoughRemainingThreadStack(
     return TRUE;
 }
 
+_Use_decl_annotations_
 __inline
 VOID
-#pragma prefast(suppress:__WARNING_UNMATCHED_DECL_ANNO, "Can't apply kernel mode annotations.");
+#pragma prefast(suppress:__WARNING_IRQL_NOT_USED);
 Mx::ReleaseCancelSpinLock(
-    __in KIRQL  Irql
+    KIRQL  Irql
     )
 {
     UNREFERENCED_PARAMETER(Irql);
@@ -655,16 +627,18 @@ Mx::MxDeletePagedLookasideList(
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 }
 
+_Use_decl_annotations_
 __inline
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR)
 Mx::MxInitializeNPagedLookasideList(
-    _Out_     PNPAGED_LOOKASIDE_LIST Lookaside,
-    _In_opt_  PALLOCATE_FUNCTION Allocate,
-    _In_opt_  PFREE_FUNCTION Free,
-    _In_      ULONG Flags,
-    _In_      SIZE_T Size,
-    _In_      ULONG Tag,
-    _In_      USHORT Depth
+    PNPAGED_LOOKASIDE_LIST Lookaside,
+    PALLOCATE_FUNCTION Allocate,
+    PFREE_FUNCTION Free,
+    ULONG Flags,
+    SIZE_T Size,
+    ULONG Tag,
+    USHORT Depth
     )
 {
 
@@ -680,16 +654,18 @@ Mx::MxInitializeNPagedLookasideList(
 
 }
 
+_Use_decl_annotations_
 __inline
 VOID
+#pragma prefast(suppress:__WARNING_RETURN_UNINIT_VAR)
 Mx::MxInitializePagedLookasideList(
-    _Out_     PPAGED_LOOKASIDE_LIST Lookaside,
-    _In_opt_  PALLOCATE_FUNCTION Allocate,
-    _In_opt_  PFREE_FUNCTION Free,
-    _In_      ULONG Flags,
-    _In_      SIZE_T Size,
-    _In_      ULONG Tag,
-    _In_      USHORT Depth
+    PPAGED_LOOKASIDE_LIST Lookaside,
+    PALLOCATE_FUNCTION Allocate,
+    PFREE_FUNCTION Free,
+    ULONG Flags,
+    SIZE_T Size,
+    ULONG Tag,
+    USHORT Depth
     )
 {
 
@@ -712,18 +688,18 @@ Mx::MxDeleteDevice(
     )
 {
     UNREFERENCED_PARAMETER(Device);
-    
+
 
 
 
     //
-    // Host's device stack object holds the only reference to the host devices. 
+    // Host's device stack object holds the only reference to the host devices.
     // The infrastructure controls the device object's lifetime.
-    // 
+    //
     DO_NOTHING();
 }
 
-__inline 
+__inline
 NTSTATUS
 Mx::MxCreateDeviceSecure(
       _In_      MdDriverObject DriverObject,
@@ -759,7 +735,7 @@ Mx::MxAttachDeviceToDeviceStack(
     _In_ MdDeviceObject TargetDevice
     )
 {
-    
+
     UNREFERENCED_PARAMETER(SourceDevice);
     UNREFERENCED_PARAMETER(TargetDevice);
 
@@ -769,7 +745,7 @@ Mx::MxAttachDeviceToDeviceStack(
 }
 
 __inline
-NTSTATUS 
+NTSTATUS
 Mx::MxCreateDevice(
     _In_      MdDriverObject DriverObject,
     _In_      ULONG DeviceExtensionSize,
@@ -828,7 +804,7 @@ Mx::MxSetDeviceInterfaceState(
 {
     UNREFERENCED_PARAMETER(SymbolicLinkName);
     UNREFERENCED_PARAMETER(Enable);
-        
+
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 
     return STATUS_NOT_IMPLEMENTED;
@@ -848,14 +824,14 @@ Mx::MxRegisterDeviceInterface(
     UNREFERENCED_PARAMETER(InterfaceClassGuid);
     UNREFERENCED_PARAMETER(ReferenceString);
     UNREFERENCED_PARAMETER(SymbolicLinkName);
-    
+
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 
     return STATUS_NOT_IMPLEMENTED;
 }
 
 __inline
-VOID 
+VOID
 Mx::MxInitializeMdl(
     _In_  PMDL MemoryDescriptorList,
     _In_  PVOID BaseVa,
@@ -865,7 +841,7 @@ Mx::MxInitializeMdl(
     UNREFERENCED_PARAMETER(MemoryDescriptorList);
     UNREFERENCED_PARAMETER(BaseVa);
     UNREFERENCED_PARAMETER(Length);
-    
+
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 
 }
@@ -877,14 +853,14 @@ Mx::MxGetMdlVirtualAddress(
     )
 {
     UNREFERENCED_PARAMETER(Mdl);
-    
+
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 
     return NULL;
 }
 
 __inline
-VOID 
+VOID
 Mx::MxBuildPartialMdl(
     _In_     PMDL SourceMdl,
     _Inout_  PMDL TargetMdl,
@@ -896,19 +872,36 @@ Mx::MxBuildPartialMdl(
     UNREFERENCED_PARAMETER(TargetMdl);
     UNREFERENCED_PARAMETER(VirtualAddress);
     UNREFERENCED_PARAMETER(Length);
-    
+
     ASSERTMSG("Not implemented for UMDF\n", FALSE);
 }
 
 __inline
-VOID 
+VOID
 Mx::MxQuerySystemTime(
     _Out_ PLARGE_INTEGER CurrentTime
     )
 {
-    UNREFERENCED_PARAMETER(CurrentTime);
-    
-    ASSERTMSG("Not implemented for UMDF\n", FALSE);
+    FILETIME filetime;
+
+    GetSystemTimeAsFileTime(&filetime);
+
+    CurrentTime->LowPart = filetime.dwLowDateTime;
+    CurrentTime->HighPart = (LONG) filetime.dwHighDateTime;
+}
+
+__inline
+VOID
+Mx::MxQuerySystemTimePrecise(
+    _Out_ PLARGE_INTEGER CurrentTime
+    )
+{
+    FILETIME filetime;
+
+    GetSystemTimePreciseAsFileTime(&filetime);
+
+    CurrentTime->LowPart = filetime.dwLowDateTime;
+    CurrentTime->HighPart = (LONG) filetime.dwHighDateTime;
 }
 
 __inline
@@ -984,7 +977,7 @@ Mx::MxReleaseInterruptSpinLock(
 }
 
 __inline
-BOOLEAN 
+BOOLEAN
 Mx::MxInsertQueueDpc(
   __inout   PRKDPC Dpc,
   __in_opt  PVOID SystemArgument1,

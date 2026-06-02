@@ -39,6 +39,12 @@ Revision History:
 
 #include "fxobjectpch.hpp"
 
+#if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
+#include "FeatureStagingSupport.h"
+#endif
+
+#include <FeatureStaging-WDF.h>
+
 // Tracing support
 extern "C" {
 #if defined(EVENT_TRACING)
@@ -98,10 +104,29 @@ FxVerifierQueryTrackPower(
     );
 
 VOID
+FxVerifierQueryStateSeparationDetection(
+    _In_ HANDLE Key,
+    _Out_ FxStateSeparationDetectionOption* StateSeparationDetection
+    );
+
+VOID
 FxOverrideDefaultVerifierSettings(
     __in    HANDLE Key,
     __in    LPWSTR Name,
-    __out   PBOOLEAN OverrideValue
+    _Inout_ PBOOLEAN OverrideValue
+    );
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlQueryRegistryValuesEx(
+    _In_     ULONG RelativeTo,
+    _In_     PCWSTR Path,
+    _Inout_ _At_(*(*QueryTable).EntryContext, _Pre_unknown_)
+        PRTL_QUERY_REGISTRY_TABLE QueryTable,
+    _In_opt_ PVOID Context,
+    _In_opt_ PVOID Environment
     );
 
 //
@@ -200,21 +225,19 @@ Return Value:
     }
 
     if (pInfo == NULL) {
-        
+
         ULONG length = sizeof(FxObjectDebugInfo) * FxObjectsInfoCount;
 
         //
         // Freed with ExFreePool in FxFreeDriverGlobals.  Must be non paged because
         // objects can be allocated at IRQL > PASSIVE_LEVEL.
         //
-        pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePoolWithTag(NonPagedPool,
+        pInfo = (FxObjectDebugInfo*) MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED,
                                                            length,
                                                            FxDriverGlobals->Tag);
         if (pInfo == NULL) {
             return STATUS_MEMORY_NOT_ALLOCATED;
         }
-        
-        RtlZeroMemory(pInfo, length);
     }
 
     ASSERT(pInfo != NULL);
@@ -296,7 +319,7 @@ Return Value:
     if (*Info == NULL) {
         *Info = pInfo;
     }
-    
+
     return STATUS_SUCCESS;
 }
 
@@ -315,20 +338,19 @@ FxDriverGlobalsInitializeDebugExtension(
     // info and it won't be available if registry info is not present.
     //
 
-    pExtension = (FxDriverGlobalsDebugExtension*) MxMemory::MxAllocatePoolWithTag(
-        NonPagedPool, sizeof(FxDriverGlobalsDebugExtension), FxDriverGlobals->Tag);
+    pExtension = (FxDriverGlobalsDebugExtension*) MxMemory::MxAllocatePool2(
+        POOL_FLAG_NON_PAGED, sizeof(FxDriverGlobalsDebugExtension), FxDriverGlobals->Tag);
 
     if (pExtension == NULL) {
         return;
     }
-
-    RtlZeroMemory(pExtension, sizeof(*pExtension));
 
     pExtension->AllocatedTagTrackersLock.Initialize();
 
     InitializeListHead(&pExtension->AllocatedTagTrackersListHead);
 
     pExtension->TrackPower = FxTrackPowerNone;
+    pExtension->StateSeparationDetection = FxStateSeparationDetectionNone;
 
     FxDriverGlobals->DebugExtension = pExtension;
 
@@ -338,6 +360,7 @@ FxDriverGlobalsInitializeDebugExtension(
                                                         FxDriverGlobals
                                                         );
         FxVerifierQueryTrackPower(Key, &pExtension->TrackPower);
+        FxVerifierQueryStateSeparationDetection(Key, &pExtension->StateSeparationDetection);
     }
 
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
@@ -433,69 +456,6 @@ FxVerifyObjectTableIsSorted(
     }
 }
 
-typedef
-NTSTATUS
-(*PFN_RTL_GET_VERSION)(
-    __out PRTL_OSVERSIONINFOW VersionInformation
-    );
-
-typedef
-NTSTATUS
-(*PFN_RTL_VERIFY_VERSION_INFO)(
-    __in PRTL_OSVERSIONINFOEXW VersionInfo,
-    __in ULONG TypeMask,
-    __in ULONGLONG  ConditionMask
-    );
-
-typedef
-ULONGLONG
-(*PFN_VER_SET_CONDITION_MASK)(
-    __in  ULONGLONG   ConditionMask,
-    __in  ULONG   TypeMask,
-    __in  UCHAR   Condition
-    );
-
-VOID
-FxLibraryGlobalsVerifyVersion(
-    VOID
-    )
-{
-    RTL_OSVERSIONINFOEXW info;
-    PFN_RTL_VERIFY_VERSION_INFO pRtlVerifyVersionInfo;
-    PFN_VER_SET_CONDITION_MASK pVerSetConditionMask;
-    ULONGLONG condition;
-    NTSTATUS status;
-
-    pRtlVerifyVersionInfo = (PFN_RTL_VERIFY_VERSION_INFO)
-        Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("RtlVerifyVersionInfo"));
-
-    if (pRtlVerifyVersionInfo == NULL) {
-        return;
-    }
-
-    pVerSetConditionMask = (PFN_VER_SET_CONDITION_MASK)
-        Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("VerSetConditionMask"));
-
-    //
-    // Check for Win8 (6.2) and later for passive-level interrupt support.
-    //
-    RtlZeroMemory(&info, sizeof(info));
-    info.dwOSVersionInfoSize = sizeof(info);
-    info.dwMajorVersion = 6;
-    info.dwMinorVersion = 2;
-
-    condition = 0;
-    condition = pVerSetConditionMask(condition, VER_MAJORVERSION, VER_GREATER_EQUAL);
-    condition = pVerSetConditionMask(condition, VER_MINORVERSION, VER_GREATER_EQUAL);
-
-    status = pRtlVerifyVersionInfo(&info,
-                                   VER_MAJORVERSION | VER_MINORVERSION,
-                                   condition);
-    if (NT_SUCCESS(status)) {
-        FxLibraryGlobals.PassiveLevelInterruptSupport = TRUE;
-    }
-}
-
 VOID
 FxLibraryGlobalsQueryRegistrySettings(
     VOID
@@ -503,15 +463,14 @@ FxLibraryGlobalsQueryRegistrySettings(
 {
     FxAutoRegKey hWdf;
     NTSTATUS status = STATUS_SUCCESS;
-    DECLARE_CONST_UNICODE_STRING(path, WDF_REGISTRY_BASE_PATH);
+    DECLARE_CONST_UNICODE_STRING(path,            WDF_REGISTRY_BASE_PATH);
     DECLARE_CONST_UNICODE_STRING(ifrDisabledName, WDF_GLOBAL_VALUE_IFRDISABLED);
-    DECLARE_CONST_UNICODE_STRING(ssDisabledName, WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED);
-#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
-    POWER_PLATFORM_INFORMATION platformInfo = {0};
-#endif
+    DECLARE_CONST_UNICODE_STRING(ssDisabledName,  WDF_GLOBAL_VALUE_SLEEPSTUDY_DISABLED);
+
 
     ULONG ifrDisabled = 0;
     ULONG ssDisabled = 0;
+
 
     status = FxRegKey::_OpenKey(NULL, &path, &hWdf.m_Key, KEY_READ);
     if (!NT_SUCCESS(status)) {
@@ -519,10 +478,8 @@ FxLibraryGlobalsQueryRegistrySettings(
     }
 
     status = FxRegKey::_QueryULong(hWdf.m_Key, &ifrDisabledName, &ifrDisabled);
-    if (NT_SUCCESS(status)) {
-        if (ifrDisabled == 1) {
-            FxLibraryGlobals.IfrDisabled = TRUE;
-        }
+    if ((NT_SUCCESS(status)) && (ifrDisabled == 1)) {
+        FxLibraryGlobals.IfrDisabled = TRUE;
     }
 
     FxLibraryGlobals.SleepStudyDisabled = FALSE;
@@ -530,6 +487,16 @@ FxLibraryGlobalsQueryRegistrySettings(
     if ((NT_SUCCESS(status)) && (ssDisabled == 1)) {
         FxLibraryGlobals.SleepStudyDisabled = TRUE;
     }
+
+
+
+
+
+
+
+
+
+
 
 exit:
     return;
@@ -541,7 +508,6 @@ FxLibraryGlobalsCommission(
     VOID
     )
 {
-    PFN_RTL_GET_VERSION pRtlGetVersion;
     NTSTATUS status;
 
     //
@@ -580,6 +546,11 @@ FxLibraryGlobalsCommission(
     FxLibraryGlobals.SleepStudyDisabled = FALSE;
 
     //
+    // Directed Power Transition support
+    //
+    FxLibraryGlobals.WdfDirectedPowerTransitionEnabled = FALSE;
+
+    //
     // Query global WDF settings (both KMDF and UMDF).
     //
     FxLibraryGlobalsQueryRegistrySettings();
@@ -587,7 +558,7 @@ FxLibraryGlobalsCommission(
 #if ((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
     UNICODE_STRING funcName;
 
-    // For DSF support.
+
     RtlInitUnicodeString(&funcName, L"IoConnectInterruptEx");
     FxLibraryGlobals.IoConnectInterruptEx = (PFN_IO_CONNECT_INTERRUPT_EX)
         MmGetSystemRoutineAddress(&funcName);
@@ -596,120 +567,18 @@ FxLibraryGlobalsCommission(
     FxLibraryGlobals.IoDisconnectInterruptEx = (PFN_IO_DISCONNECT_INTERRUPT_EX)
         MmGetSystemRoutineAddress(&funcName);
 
-    // 32 bit: W2k and forward.
-    // 64 bit: W2k -> Windows Server 2008 (obsolete otherwise).
-    RtlInitUnicodeString(&funcName, L"KeQueryActiveProcessors");
-    FxLibraryGlobals.KeQueryActiveProcessors = (PFN_KE_QUERY_ACTIVE_PROCESSORS)
-        MmGetSystemRoutineAddress(&funcName);
-
-    RtlInitUnicodeString(&funcName, L"KeSetTargetProcessorDpc");
-    FxLibraryGlobals.KeSetTargetProcessorDpc = (PFN_KE_SET_TARGET_PROCESSOR_DPC)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // These should always be there (obsolete in 64 bit Win 7 and forward).
-    ASSERT(FxLibraryGlobals.KeQueryActiveProcessors != NULL &&
-           FxLibraryGlobals.KeSetTargetProcessorDpc != NULL);
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"KeQueryActiveGroupCount");
-    if (MmGetSystemRoutineAddress(&funcName) != NULL) {
-        FxLibraryGlobals.ProcessorGroupSupport = TRUE;
-    }
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"KeSetCoalescableTimer");
-    FxLibraryGlobals.KeSetCoalescableTimer = (PFN_KE_SET_COALESCABLE_TIMER)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 7 and forward.
-    RtlInitUnicodeString(&funcName, L"IoUnregisterPlugPlayNotificationEx");
-    FxLibraryGlobals.IoUnregisterPlugPlayNotificationEx = (PFN_IO_UNREGISTER_PLUGPLAY_NOTIFICATION_EX)
-        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxRegisterDevice");
-    FxLibraryGlobals.PoxRegisterDevice =
-      (PFN_POX_REGISTER_DEVICE) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxStartDevicePowerManagement");
-    FxLibraryGlobals.PoxStartDevicePowerManagement =
-                                    (PFN_POX_START_DEVICE_POWER_MANAGEMENT)
-                                        MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxUnregisterDevice");
-    FxLibraryGlobals.PoxUnregisterDevice =
-                                (PFN_POX_UNREGISTER_DEVICE)
-                                    MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxActivateComponent");
-    FxLibraryGlobals.PoxActivateComponent = (PFN_POX_ACTIVATE_COMPONENT)
-                                          MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxIdleComponent");
-    FxLibraryGlobals.PoxIdleComponent = (PFN_POX_IDLE_COMPONENT)
-                                          MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxReportDevicePoweredOn");
-    FxLibraryGlobals.PoxReportDevicePoweredOn =
-      (PFN_POX_REPORT_DEVICE_POWERED_ON) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteIdleState");
-    FxLibraryGlobals.PoxCompleteIdleState =
-      (PFN_POX_COMPLETE_IDLE_STATE) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteIdleCondition");
-    FxLibraryGlobals.PoxCompleteIdleCondition =
-      (PFN_POX_COMPLETE_IDLE_CONDITION) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxCompleteDevicePowerNotRequired");
-    FxLibraryGlobals.PoxCompleteDevicePowerNotRequired =
-      (PFN_POX_COMPLETE_DEVICE_POWER_NOT_REQUIRED) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
-    RtlInitUnicodeString(&funcName, L"PoFxSetDeviceIdleTimeout");
-    FxLibraryGlobals.PoxSetDeviceIdleTimeout =
-      (PFN_POX_SET_DEVICE_IDLE_TIMEOUT) MmGetSystemRoutineAddress(&funcName);
-
-    // Win 8 and forward
     RtlInitUnicodeString(&funcName, L"IoReportInterruptActive");
     FxLibraryGlobals.IoReportInterruptActive =
       (PFN_IO_REPORT_INTERRUPT_ACTIVE) MmGetSystemRoutineAddress(&funcName);
 
-    // Win 8 and forward
     RtlInitUnicodeString(&funcName, L"IoReportInterruptInactive");
     FxLibraryGlobals.IoReportInterruptInactive =
       (PFN_IO_REPORT_INTERRUPT_INACTIVE) MmGetSystemRoutineAddress(&funcName);
 
-    // Win 8.2 and forward
-    RtlInitUnicodeString(&funcName, L"VfCheckNxPoolType");
-    FxLibraryGlobals.VfCheckNxPoolType =
-      (PFN_VF_CHECK_NX_POOL_TYPE) MmGetSystemRoutineAddress(&funcName);
-
-    // RS5 and forward
-    RtlInitUnicodeString(&funcName, L"VfIsRuleClassEnabled");
-    FxLibraryGlobals.VfIsRuleClassEnabled =
-      (PFN_VF_IS_RULE_CLASS_ENABLED) MmGetSystemRoutineAddress(&funcName);
-
 #endif //((FX_CORE_MODE)==(FX_CORE_KERNEL_MODE))
 
     FxLibraryGlobals.OsVersionInfo.dwOSVersionInfoSize = sizeof(FxLibraryGlobals.OsVersionInfo);
-
-    // User/Kernel agnostic.
-
-    pRtlGetVersion = (PFN_RTL_GET_VERSION)
-                Mx::MxGetSystemRoutineAddress(MAKE_MX_FUNC_NAME("RtlGetVersion"));
-
-    ASSERT(pRtlGetVersion != NULL);
-    pRtlGetVersion((PRTL_OSVERSIONINFOW) &FxLibraryGlobals.OsVersionInfo);
-    FxLibraryGlobalsVerifyVersion();
+    RtlGetVersion((PRTL_OSVERSIONINFOW) &FxLibraryGlobals.OsVersionInfo);
 
     //
     // Initialize power management-related stuff.
@@ -1032,8 +901,8 @@ Returns:
 
     const ULONG VrfWDFRuleClass = 33;
 
-    if (MmIsDriverVerifying (DriverObject) > 0 && (FxLibraryGlobals.VfIsRuleClassEnabled != NULL)) {
-        isWDFRuleClassTurnedOn = FxLibraryGlobals.VfIsRuleClassEnabled (VrfWDFRuleClass);
+    if (MmIsDriverVerifying (DriverObject) > 0) {
+        isWDFRuleClassTurnedOn = VfIsRuleClassEnabled (VrfWDFRuleClass);
     }
 
     return isWDFRuleClassTurnedOn;
@@ -1150,13 +1019,11 @@ FxAllocateDriverGlobals(
     NTSTATUS            status;
 
     pFxDriverGlobals = (PFX_DRIVER_GLOBALS)
-        MxMemory::MxAllocatePoolWithTag(NonPagedPool, sizeof(FX_DRIVER_GLOBALS), FX_TAG);
+        MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(FX_DRIVER_GLOBALS), FX_TAG);
 
     if (pFxDriverGlobals == NULL) {
         return NULL;
     }
-
-    RtlZeroMemory(pFxDriverGlobals, sizeof(FX_DRIVER_GLOBALS));
 
     pFxDriverGlobals->Refcnt = 1;
 
@@ -1344,7 +1211,7 @@ Return Value:
     //
     FxVerifierReadObjectDebugInfo(Key,
                                   FxDriverGlobals,
-                                  &pInfo, 
+                                  &pInfo,
                                   L"TrackHandles",
                                   FxObjectDebugTrackReferences,
                                   NULL);
@@ -1353,28 +1220,24 @@ Return Value:
     }
 
     //
-    // See if we are tracking object counts for leak detection
+    // To enable leak detection, a reg key must be present and not equal to 0xFFFFFFFF
     //
     DECLARE_CONST_UNICODE_STRING(valueName, L"ObjectLeakDetectionLimit");
-
     ULONG Limit;
-    if (!NT_SUCCESS(FxRegKey::_QueryULong(Key, &valueName, &Limit))) {
+    if (!NT_SUCCESS(FxRegKey::_QueryULong(Key, &valueName, &Limit))
+        || Limit == FX_OBJECT_LEAK_DETECTION_DISABLED) {
 
-        Limit = (ULONG) FX_OBJECT_LEAK_DETECTION_DISABLED;
+        return pInfo;
     }
 
-    if (Limit != FX_OBJECT_LEAK_DETECTION_DISABLED) {
-        FxDriverGlobals->FxVerifyLeakDetection = (FxObjectDebugLeakDetection*)
-                            MxMemory::MxAllocatePoolWithTag(NonPagedPool,
+    FxDriverGlobals->FxVerifyLeakDetection = (FxObjectDebugLeakDetection*)
+                            MxMemory::MxAllocatePool2(POOL_FLAG_NON_PAGED,
                                 sizeof(FxObjectDebugLeakDetection),
                                 FxDriverGlobals->Tag);
-    }
-
     if (FxDriverGlobals->FxVerifyLeakDetection == NULL) {
         return pInfo;
     }
 
-    RtlZeroMemory(FxDriverGlobals->FxVerifyLeakDetection, sizeof(FxObjectDebugLeakDetection));
     FxDriverGlobals->FxVerifyLeakDetection->Limit = Limit;
     FxDriverGlobals->FxVerifyLeakDetection->LimitScaled = Limit;
     FxDriverGlobals->FxVerifyLeakDetection->ObjectCnt = 0;
@@ -1394,7 +1257,7 @@ Return Value:
     if (!NT_SUCCESS(status) || NULL == pInfo) {
         MxMemory::MxFreePool(FxDriverGlobals->FxVerifyLeakDetection);
         FxDriverGlobals->FxVerifyLeakDetection = NULL;
-    } 
+    }
 
     return pInfo;
 }
@@ -1420,16 +1283,16 @@ Arguments:
     Key - Registry key to query the value for
 
     FxDriverGlobals - globals
-    
+
     Info - optional preallocated debug info structure.
 
     KeyName - Key to read from
 
     DebugFlag - flag to set in the debug info structure.
 
-    DefaultSettings - settings to use in the event the registery key is not 
+    DefaultSettings - settings to use in the event the registery key is not
         present or malformed.
-    
+
 Return Value:
     NT_SUCCESS if the registry key was read and memory was allocated.
 
@@ -1468,7 +1331,7 @@ Return Value:
     // Pool can be paged b/c we are running at PASSIVE_LEVEL and we are going
     // to free it at the end of this function.
     //
-    dataBuffer = MxMemory::MxAllocatePoolWithTag(PagedPool, length, FxDriverGlobals->Tag);
+    dataBuffer = MxMemory::MxAllocatePool2(POOL_FLAG_PAGED, length, FxDriverGlobals->Tag);
     if (dataBuffer == NULL) {
         status = STATUS_MEMORY_NOT_ALLOCATED;
         goto exit;
@@ -1533,11 +1396,32 @@ FxVerifierQueryTrackPower(
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 VOID
 FxOverrideDefaultVerifierSettings(
     __in    HANDLE Key,
     __in    LPWSTR Name,
-    __out   PBOOLEAN OverrideValue
+    _Inout_ PBOOLEAN OverrideValue
     )
 {
     UNICODE_STRING valueName;
@@ -1602,16 +1486,15 @@ Arguments:
     ULONG i;
     ULONG timeoutValue = 0;
     FxAutoRegKey hDriver, hWdf;
-    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
-
-    typedef NTSTATUS NTAPI QUERYFN(
-        ULONG, PCWSTR, PRTL_QUERY_REGISTRY_TABLE, PVOID, PVOID);
-
-    QUERYFN* queryFn;
 
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
-    UNICODE_STRING FunctionName;
-#endif
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Wdf");
+    UNREFERENCED_PARAMETER(RegistryPath);
+
+    status = OpenDriverParamsKeyForRead(FxDriverGlobals, &hDriver.m_Key);
+
+#else
+    DECLARE_CONST_UNICODE_STRING(parametersPath, L"Parameters\\Wdf");
 
     //
     // UMDF may not provide this registry path
@@ -1621,6 +1504,8 @@ Arguments:
     }
 
     status = FxRegKey::_OpenKey(NULL, RegistryPath, &hDriver.m_Key, KEY_READ);
+#endif
+
     if (!NT_SUCCESS(status)) {
         return;
     }
@@ -1661,7 +1546,7 @@ Arguments:
         paramTable[i].DefaultLength = sizeof(ULONG); \
         i++; \
         ASSERT(i < sizeof(paramTable) / sizeof(paramTable[0]));
-    
+
     verboseValue = 0;
     ADD_TABLE_ENTRY("VerboseOn", verboseValue, zero);
 
@@ -1705,7 +1590,7 @@ Arguments:
 
     dsfValue = 0;
     ADD_TABLE_ENTRY("DsfOn", dsfValue, zero);
-    
+
     removeLockOptionFlags = 0;
     ADD_TABLE_ENTRY("RemoveLockOptionFlags", removeLockOptionFlags, zero);
 
@@ -1717,31 +1602,7 @@ Arguments:
     ASSERT(paramTable[i].QueryRoutine == NULL);
     ASSERT(paramTable[i].Name == NULL);
 
-#if (FX_CORE_MODE==FX_CORE_USER_MODE)
-
-    queryFn = (QUERYFN*) GetProcAddress(
-        GetModuleHandle(TEXT("ntdll.dll")),
-        "RtlQueryRegistryValuesEx"
-        );
-
-#else
-
-    RtlInitUnicodeString(&FunctionName, L"RtlQueryRegistryValuesEx");
-
-#pragma warning(push)
-#pragma warning(disable: 4055)
-
-    queryFn  = (QUERYFN*)MmGetSystemRoutineAddress(&FunctionName);
-
-#pragma warning(pop)
-
-#endif
-
-    if (queryFn == NULL) {
-        queryFn = &RtlQueryRegistryValues;
-    }
-
-    status = queryFn(
+    status = RtlQueryRegistryValuesEx(
         RTL_REGISTRY_OPTIONAL | RTL_REGISTRY_HANDLE,
         (PWSTR) hWdf.m_Key,
         &paramTable[0],
@@ -1900,6 +1761,48 @@ FX_DRIVER_GLOBALS::WaitForSignal(
             break;
         }
     } WHILE(TRUE);
+}
+
+_Must_inspect_result_
+BOOLEAN
+FX_DRIVER_GLOBALS::IsVersionGreaterThanOrEqualTo(
+    _In_ ULONG Major,
+    _In_ ULONG Minor
+    )
+{
+    if ((WdfBindInfo->Version.Major > Major) ||
+                (WdfBindInfo->Version.Major == Major &&
+                  WdfBindInfo->Version.Minor >= Minor)) {
+        return TRUE;
+    }
+    else {
+        return FALSE;
+    }
+}
+
+_Must_inspect_result_
+BOOLEAN
+FX_DRIVER_GLOBALS::IsMinorVersionGreaterThanOrEqualTo(
+    _In_ ULONG Minor
+    )
+{
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    ASSERT(WdfBindInfo->Version.Major == 1);
+#else
+    ASSERT(WdfBindInfo->Version.Major == 2);
+
+    //
+    // This is needed for e.g. KMDF checking version >= 1.11
+    //
+    // UMDF 2.0 = KMDF 1.13. Thus any check below 13 is always satisfied.
+    // Starting with minor version = 15, KMDF and UMDF are updated together.
+    //
+    if (Minor <= 13) {
+        return TRUE;
+    }
+#endif
+
+    return (WdfBindInfo->Version.Minor >= Minor);
 }
 
 } // extern "C"

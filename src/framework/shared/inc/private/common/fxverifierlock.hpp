@@ -303,7 +303,7 @@ private:
         );
 
     void
-    FxVerifierLock::FxVerifierLockDumpDetails(
+    FxVerifierLockDumpDetails(
         __in FxVerifierLock* Lock,
         __in PVOID           curThread,
         __in FxVerifierLock* PerThreadList
@@ -492,13 +492,13 @@ public:
 
     VOID
     Lock(
-        __out PKIRQL PreviousIrql,
+        __out __drv_deref(__drv_savesIRQL) PKIRQL PreviousIrql,
         __in BOOLEAN AtDpc
         );
 
     VOID
     Unlock(
-        __in KIRQL PreviousIrql,
+        __in __drv_restoresIRQL KIRQL PreviousIrql,
         __in BOOLEAN AtDpc
         );
 

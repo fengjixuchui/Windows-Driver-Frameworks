@@ -94,6 +94,14 @@ typedef enum WaitSignalFlags {
 } WaitSignalFlags;
 
 
+
+
+
+
+
+
+
+
 struct FxObjectDebugInfo {
     //
     // FX_OBJECT_TYPES enum value
@@ -181,6 +189,13 @@ struct FxDriverGlobalsDebugExtension {
     // and optionally capture stack frames.
     //
     FxTrackPowerOption TrackPower;
+
+
+
+
+
+
+
 };
 
 //
@@ -310,6 +325,12 @@ public:
 
     _Must_inspect_result_
     BOOLEAN
+    IsMinorVersionGreaterThanOrEqualTo(
+        _In_ ULONG  Minor
+        );
+
+    _Must_inspect_result_
+    BOOLEAN
     IsCorrectVersionRegistered(
         _In_ PCUNICODE_STRING ServiceKeyName
         );
@@ -414,6 +435,11 @@ public:
     // name).
     //
     ULONG Tag;
+
+    //
+    // Driver Object. Useful before FxDriver::m_DriverObject is initialized.
+    //
+    MxDriverObject DriverObject;
 
     //
     // Backpointer to Fx driver object
@@ -622,6 +648,11 @@ FxPoolAllocate(
     __in size_t Size
     )
 {
+    FxPoolTypeOrPoolFlags typeOrFlags;
+
+    typeOrFlags.UsePoolType = TRUE;
+    typeOrFlags.u.PoolType = Type;
+
     //
     // Always pass in the return address, regardless of the value of
     // Globals->WdfPoolTrackingOn.
@@ -629,7 +660,7 @@ FxPoolAllocate(
     return FxPoolAllocator(
         Globals,
         &Globals->FxPoolFrameworks,
-        Type,
+        typeOrFlags,
         Size,
         Globals->Tag,
         _ReturnAddress()
@@ -646,14 +677,56 @@ FxPoolAllocateWithTag(
     __in ULONG Tag
     )
 {
+    FxPoolTypeOrPoolFlags typeOrFlags;
+
+    typeOrFlags.UsePoolType = TRUE;
+    typeOrFlags.u.PoolType = Type;
+
     return FxPoolAllocator(
         Globals,
         &Globals->FxPoolFrameworks,
-        Type,
+        typeOrFlags,
         Size,
         Tag,
         Globals->FxPoolTrackingOn ? _ReturnAddress() : NULL
         );
+}
+
+__bcount(Size)
+PVOID
+FORCEINLINE
+FxPoolAllocateWithTag2(
+    _In_ PFX_DRIVER_GLOBALS Globals,
+    _In_ POOL_FLAGS Flags,
+    _In_ size_t Size,
+    _In_ ULONG Tag
+    )
+{
+    FxPoolTypeOrPoolFlags typeOrFlags;
+
+    typeOrFlags.UsePoolType = FALSE;
+    typeOrFlags.u.PoolFlags = Flags;
+
+    return FxPoolAllocator(
+        Globals,
+        &Globals->FxPoolFrameworks,
+        typeOrFlags,
+        Size,
+        Tag,
+        Globals->FxPoolTrackingOn ? _ReturnAddress() : NULL
+        );
+}
+
+__bcount(Size)
+PVOID
+FORCEINLINE
+FxPoolAllocate2(
+    _In_ PFX_DRIVER_GLOBALS Globals,
+    _In_ POOL_FLAGS Flags,
+    _In_ size_t Size
+    )
+{
+    return FxPoolAllocateWithTag2(Globals, Flags, Size, Globals->Tag);
 }
 
 //
@@ -681,6 +754,21 @@ VOID
 UnlockVerifierSection(
     _In_ PFX_DRIVER_GLOBALS FxDriverGlobals
     );
+
+__inline
+NTSTATUS
+OpenDriverParamsKeyForRead(
+    _In_  PFX_DRIVER_GLOBALS FxDriverGlobals,
+    _Out_ HANDLE            *Key
+    )
+{
+    return IoOpenDriverRegistryKey(FxDriverGlobals->DriverObject.GetObject(),
+                                   DriverRegKeyParameters,
+                                   KEY_READ,
+                                   0, // Flags - Must be 0
+                                   Key);
+}
+
 #endif
 
 BOOLEAN
@@ -741,26 +829,6 @@ FxObjectTypeToHandleName(
     __in WDFTYPE ObjectType
     );
 
-typedef
-NTSTATUS
-(*PFN_WMI_QUERY_TRACE_INFORMATION)(
-    __in      TRACE_INFORMATION_CLASS TraceInformationClass,
-    __out     PVOID TraceInformation,
-    __in      ULONG TraceInformationLength,
-    __out_opt PULONG RequiredLength,
-    __in_opt  PVOID Buffer
-    );
-
-typedef
-NTSTATUS
-(*PFN_WMI_TRACE_MESSAGE_VA)(
-    __in TRACEHANDLE  LoggerHandle,
-    __in ULONG        MessageFlags,
-    __in LPGUID       MessageGuid,
-    __in USHORT       MessageNumber,
-    __in va_list      MessageArgList
-    );
-
 enum FxMachineSleepStates {
     FxMachineS1Index = 0,
     FxMachineS2Index,
@@ -797,45 +865,11 @@ struct FxLibraryGlobalsType {
     //
     PDEVICE_OBJECT LibraryDeviceObject;
 
+
     PFN_IO_CONNECT_INTERRUPT_EX IoConnectInterruptEx;
-
     PFN_IO_DISCONNECT_INTERRUPT_EX IoDisconnectInterruptEx;
-
-    PFN_KE_QUERY_ACTIVE_PROCESSORS KeQueryActiveProcessors;
-
-    PFN_KE_SET_TARGET_PROCESSOR_DPC KeSetTargetProcessorDpc;
-
-    PFN_KE_SET_COALESCABLE_TIMER KeSetCoalescableTimer;
-
-    PFN_IO_UNREGISTER_PLUGPLAY_NOTIFICATION_EX IoUnregisterPlugPlayNotificationEx;
-
-    PFN_POX_REGISTER_DEVICE PoxRegisterDevice;
-
-    PFN_POX_START_DEVICE_POWER_MANAGEMENT PoxStartDevicePowerManagement;
-
-    PFN_POX_UNREGISTER_DEVICE PoxUnregisterDevice;
-
-    PFN_POX_ACTIVATE_COMPONENT PoxActivateComponent;
-
-    PFN_POX_IDLE_COMPONENT PoxIdleComponent;
-
-    PFN_POX_REPORT_DEVICE_POWERED_ON PoxReportDevicePoweredOn;
-
-    PFN_POX_COMPLETE_IDLE_STATE PoxCompleteIdleState;
-
-    PFN_POX_COMPLETE_IDLE_CONDITION PoxCompleteIdleCondition;
-
-    PFN_POX_COMPLETE_DEVICE_POWER_NOT_REQUIRED PoxCompleteDevicePowerNotRequired;
-
-    PFN_POX_SET_DEVICE_IDLE_TIMEOUT PoxSetDeviceIdleTimeout;
-
     PFN_IO_REPORT_INTERRUPT_ACTIVE IoReportInterruptActive;
-
     PFN_IO_REPORT_INTERRUPT_INACTIVE IoReportInterruptInactive;
-
-    PFN_VF_CHECK_NX_POOL_TYPE VfCheckNxPoolType;
-
-    PFN_VF_IS_RULE_CLASS_ENABLED VfIsRuleClassEnabled;
 
 #endif
 
@@ -867,8 +901,6 @@ struct FxLibraryGlobalsType {
     //
     KBUGCHECK_REASON_CALLBACK_RECORD  BugCheckCallbackRecord;
 
-    BOOLEAN ProcessorGroupSupport;
-
 #endif
     //
     // WPP tracing.
@@ -888,8 +920,6 @@ struct FxLibraryGlobalsType {
     //
     PFX_DRIVER_GLOBALS BestDriverForDumpLog;
 #endif
-
-    BOOLEAN PassiveLevelInterruptSupport;
 
     //
     // TRUE if compiled for user-mode
@@ -947,6 +977,13 @@ struct FxLibraryGlobalsType {
     // Registry setting to disable sleep study
     //
     BOOLEAN SleepStudyDisabled;
+
+    //
+    // PoFx's Directed power management (DFx) feature auto opt-in setting.
+    // Note this only applies to drivers that opt into WDF system-managed idle
+    // timeout policy.
+    //
+    BOOLEAN WdfDirectedPowerTransitionEnabled;
 };
 
 extern FxLibraryGlobalsType FxLibraryGlobals;
@@ -1164,7 +1201,7 @@ FxIsPassiveLevelInterruptSupported(
     //
     // Passive-level interrupt handling is supported in Win 8 and forward.
     //
-    return FxLibraryGlobals.PassiveLevelInterruptSupport;
+    return TRUE;
 }
 
 __inline

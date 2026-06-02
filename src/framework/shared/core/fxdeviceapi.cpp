@@ -66,7 +66,7 @@ Returns:
 
 {
     DDI_ENTRY();
-        
+
     FxDevice* pDevice;
 
     FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
@@ -91,7 +91,7 @@ WDFEXPORT(WdfDeviceGetIoTarget)(
     )
 {
     DDI_ENTRY();
-        
+
     FxIoTarget* pTarget;
     FxDeviceBase *pDeviceBase;
 
@@ -133,13 +133,13 @@ Arguments:
 Returns:
 
     WDFIOTARGET handle to the Self IO Target. NULL is returned in case the
-    device does not have an Self IO target. 
+    device does not have an Self IO target.
 
 --*/
 
 {
     DDI_ENTRY();
-        
+
     FxIoTargetSelf* pTarget;
     FxDevice *pDevice;
 
@@ -170,7 +170,7 @@ WDFEXPORT(WdfDeviceRetrieveDeviceName)(
     )
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice *pDevice;
     FxString* pString;
@@ -218,7 +218,7 @@ WDFEXPORT(WdfDeviceSetCharacteristics)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
     MxDeviceObject deviceObject;
 
@@ -242,7 +242,7 @@ WDFEXPORT(WdfDeviceGetCharacteristics)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
     MxDeviceObject deviceObject;
 
@@ -266,7 +266,7 @@ WDFEXPORT(WdfDeviceGetAlignmentRequirement)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDeviceBase* pDeviceBase;
     MxDeviceObject deviceObject;
 
@@ -292,7 +292,7 @@ WDFEXPORT(WdfDeviceSetAlignmentRequirement)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDeviceBase* pDeviceBase;
     MxDeviceObject deviceObject;
 
@@ -316,7 +316,7 @@ WDFEXPORT(WdfDeviceGetDevicePnpState)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
 
     FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
@@ -337,7 +337,7 @@ WDFEXPORT(WdfDeviceGetDevicePowerState)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
 
     FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
@@ -358,7 +358,7 @@ WDFEXPORT(WdfDeviceGetDevicePowerPolicyState)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
 
     FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
@@ -382,7 +382,7 @@ WDFEXPORT(WdfDeviceAssignS0IdleSettings)(
     )
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     NTSTATUS status;
     FxDevice* pDevice;
@@ -494,7 +494,7 @@ WDFEXPORT(WdfDeviceAssignSxWakeSettings)(
     )
 {
     DDI_ENTRY();
-        
+
     NTSTATUS status;
     FxDevice* pDevice;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -609,7 +609,7 @@ WDFEXPORT(WdfDeviceOpenRegistryKey)(
     FxPointerNotNull(pFxDriverGlobals, Key);
 
     *Key = NULL;
-    
+
     status = FxVerifierCheckIrqlLevel(pFxDriverGlobals, PASSIVE_LEVEL);
     if (!NT_SUCCESS(status)) {
         FxVerifierDbgBreakPoint(pFxDriverGlobals);
@@ -657,7 +657,7 @@ WDFEXPORT(WdfDeviceOpenDevicemapKey) (
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxRegKey* pKey = NULL;
     WDFKEY keyHandle;
-    
+
     FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
                                    Device,
                                    FX_TYPE_DEVICE,
@@ -678,7 +678,7 @@ WDFEXPORT(WdfDeviceOpenDevicemapKey) (
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "The subkey cannot be of length zero, %!STATUS!", status);
-        return status;        
+        return status;
     }
 
     status = FxVerifierCheckIrqlLevel(pFxDriverGlobals, PASSIVE_LEVEL);
@@ -732,12 +732,12 @@ WDFEXPORT(WdfDeviceGetDeviceState)(
     PWDF_DRIVER_GLOBALS DriverGlobals,
     __in
     WDFDEVICE Device,
-    __out
+    _Inout_
     PWDF_DEVICE_STATE DeviceState
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
 
@@ -749,7 +749,9 @@ WDFEXPORT(WdfDeviceGetDeviceState)(
 
     FxPointerNotNull(pFxDriverGlobals, DeviceState);
 
-    if (DeviceState->Size != sizeof(WDF_DEVICE_STATE)) {
+    if ((DeviceState->Size != sizeof(WDF_DEVICE_STATE_V1_27)) &&
+        (DeviceState->Size != sizeof(WDF_DEVICE_STATE))) {
+
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "WDFDEVICE 0x%p DeviceState Size %d, expected %d",
@@ -775,7 +777,7 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     ULONG i;
@@ -787,6 +789,7 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
         OFFSET_AND_NAME(WDF_DEVICE_STATE, NotDisableable),
         OFFSET_AND_NAME(WDF_DEVICE_STATE, Removed),
         OFFSET_AND_NAME(WDF_DEVICE_STATE, ResourcesChanged),
+        OFFSET_AND_NAME(WDF_DEVICE_STATE, AssignedToGuest),
     };
 
     FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
@@ -797,7 +800,9 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
 
     FxPointerNotNull(pFxDriverGlobals, DeviceState);
 
-    if (DeviceState->Size != sizeof(WDF_DEVICE_STATE)) {
+    if ((DeviceState->Size != sizeof(WDF_DEVICE_STATE_V1_27)) &&
+        (DeviceState->Size != sizeof(WDF_DEVICE_STATE))) {
+
         DoTraceLevelMessage(
             pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
             "WDFDEVICE 0x%p, DeviceState Size %d, expected %d",
@@ -815,6 +820,14 @@ WDFEXPORT(WdfDeviceSetDeviceState)(
         //
         if (offsets[i].Offset + sizeof(WDF_TRI_STATE) > sizeof(*DeviceState)) {
             return;
+        }
+
+        //
+        // If the device state passed in by the driver is an older version that
+        // does not contain this field, stop validating.
+        //
+        if (offsets[i].Offset + sizeof(WDF_TRI_STATE) > DeviceState->Size) {
+            break;
         }
 
         value = *(WDF_TRI_STATE*) WDF_PTR_ADD_OFFSET(DeviceState,
@@ -861,7 +874,7 @@ WDFEXPORT(WdfDeviceCreate)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice* pDevice;
     NTSTATUS status;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -943,6 +956,20 @@ WDFEXPORT(WdfDeviceCreate)(
         }
     }
 
+    if (((*DeviceInit)->Pdo.NoPowerDependencyOnParent != FALSE) &&
+        ((*DeviceInit)->Pdo.EventCallbacks.Size != 0)) {
+        if (((*DeviceInit)->Pdo.EventCallbacks.EvtDeviceEnableWakeAtBus) ||
+            ((*DeviceInit)->Pdo.EventCallbacks.EvtDeviceDisableWakeAtBus)) {
+            status = STATUS_INVALID_DEVICE_REQUEST;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "Illegal to specify EvtDeviceEnableWakeAtBus/EvtDeviceDisableWakeAtBus "
+                "for PDOs that don't have a power dependency on the parent, %!STATUS!",
+                status);
+            return status;
+        }
+    }
+
     status = FxDevice::_Create(pFxDriverGlobals,
                                DeviceInit,
                                DeviceAttributes,
@@ -967,7 +994,7 @@ WDFEXPORT(WdfDeviceCreateSymbolicLink)(
     )
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     PUNICODE_STRING pName;
     FxAutoString pdoName;
@@ -1059,7 +1086,7 @@ Return Value:
   --*/
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice* pDevice;
     NTSTATUS status;
@@ -1146,7 +1173,7 @@ Return Value:
   --*/
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice* pDevice;
     NTSTATUS status;
@@ -1211,7 +1238,7 @@ WDFEXPORT(WdfDeviceSetStaticStopRemove)(
     )
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
 
     FxObjectHandleGetPtr(GetFxDriverGlobals(DriverGlobals),
@@ -1322,6 +1349,8 @@ StopIdleWorker(
         return status;
     }
 
+    pDevice->m_PkgPnp->SaveRequestD0IrpReasonHint(RequestD0ForStopIdle);
+
     status = pDevice->m_PkgPnp->PowerReference(WaitForD0, Tag, Line, File);
 
     DoTraceLevelMessage(
@@ -1331,10 +1360,10 @@ StopIdleWorker(
 
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     //
-    // status may be STATUS_SUCCESS or STATUS_PENDING, in either case we 
+    // status may be STATUS_SUCCESS or STATUS_PENDING, in either case we
     // increment
     //
-    if (NT_SUCCESS(status) && 
+    if (NT_SUCCESS(status) &&
         pDevice->m_PkgPnp->IsSleepStudyTrackingRefs()) {
         pDevice->m_PkgPnp->SleepStudyPowerRefIncrement();
     }
@@ -1399,8 +1428,8 @@ WDFEXPORT(WdfDeviceStopIdleNoTrack)(
 /*++
 
 Routine Description:
-    WdfDeviceStopIdle for drivers compiled against WDF 1.13 and older. This 
-    function entry point preserves the old function entry, without tag 
+    WdfDeviceStopIdle for drivers compiled against WDF 1.13 and older. This
+    function entry point preserves the old function entry, without tag
     tracking, in the WDF Function Entry Table.
 
 Arguments:
@@ -1446,7 +1475,7 @@ WDFEXPORT(WdfDeviceStopIdleActual)(
 /*++
 
 Routine Description:
-    WdfDeviceStopIdle and WdfDeviceStopIdleWithTag for drivers compiled 
+    WdfDeviceStopIdle and WdfDeviceStopIdleWithTag for drivers compiled
     against WDF 1.15/2.15 and newer.
 
 Arguments:
@@ -1520,7 +1549,7 @@ WDFEXPORT(WdfDeviceResumeIdleActual)(
 /*++
 
 Routine Description:
-    WdfDeviceResumeIdle and WdfDeviceStopIdleWithTag for drivers compiled 
+    WdfDeviceResumeIdle and WdfDeviceStopIdleWithTag for drivers compiled
     against WDF 1.15/2.15 and newer.
 
 Arguments:
@@ -1568,7 +1597,7 @@ Return Value:
   --*/
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice* pDevice;
     ULONG i;
@@ -1665,7 +1694,7 @@ Return Value:
   --*/
 {
     DDI_ENTRY();
-        
+
     FxDevice* pDevice;
     ULONG i;
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
@@ -1847,7 +1876,7 @@ Returns:
 
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     NTSTATUS  status;
     FxDevice*  pDevice;
@@ -1964,7 +1993,7 @@ Returns:
 
 {
     DDI_ENTRY();
-        
+
     FxPkgIo*   pPkgIo;;
     FxIoQueue* pFxIoQueue;;
     FxDevice * pFxDevice;
@@ -2039,7 +2068,7 @@ Return Value:
 
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice *pDevice;
     FxRequest* pRequest;
@@ -2111,7 +2140,7 @@ Return Value:
 
 {
     DDI_ENTRY();
-        
+
     FxDevice *pDevice;
 
     //
@@ -2149,7 +2178,7 @@ WDFEXPORT(WdfDeviceQueryPropertyEx)(
 
 Routine Description:
 
-    This routine queries interface property.   
+    This routine queries interface property.
 
 Arguments:
 
@@ -2157,35 +2186,35 @@ Arguments:
 
     Device - WDF Device handle.
 
-    DeviceProperty - A pointer to WDF_DEVICE_PROPERTY_ DATA structure. 
-    
-    BufferLength - The size, in bytes, of the buffer that is pointed to by 
+    DeviceProperty - A pointer to WDF_DEVICE_PROPERTY_ DATA structure.
+
+    BufferLength - The size, in bytes, of the buffer that is pointed to by
                    PropertyBuffer.
-                   
+
     PropertyBuffer - A caller-supplied pointer to a caller-allocated buffer that
-                  receives the requested information. The pointer can be NULL 
+                  receives the requested information. The pointer can be NULL
                   if the BufferLength parameter is zero.
-                  
-    ResultLength - A caller-supplied location that, on return, contains the 
-                  size, in bytes, of the information that the method stored in 
-                  PropertyBuffer. If the function's return value is 
-                  STATUS_BUFFER_TOO_SMALL, this location receives the required 
+
+    ResultLength - A caller-supplied location that, on return, contains the
+                  size, in bytes, of the information that the method stored in
+                  PropertyBuffer. If the function's return value is
+                  STATUS_BUFFER_TOO_SMALL, this location receives the required
                   buffer size.
-                  
+
     Type - A pointer to a DEVPROPTYPE variable. If method successfully retrieves
                   the property data, the routine writes the property type value
-                  to this variable. This value indicates the type of property 
+                  to this variable. This value indicates the type of property
                   data that is in the Data buffer.
 
 Return Value:
 
-    Method returns an NTSTATUS value. This routine might return one of the 
-    following values. 
+    Method returns an NTSTATUS value. This routine might return one of the
+    following values.
 
-    STATUS_BUFFER_TOO_SMALL - The supplied buffer is too small to receive the 
+    STATUS_BUFFER_TOO_SMALL - The supplied buffer is too small to receive the
                             information. The ResultLength member receives the
                             size of buffer required.
-    STATUS_SUCCESS  - The operation succeeded. 
+    STATUS_SUCCESS  - The operation succeeded.
     STATUS_INVALID_PARAMETER - One of the parameters is incorrect.
 
     The method might return other NTSTATUS values.
@@ -2194,7 +2223,7 @@ Return Value:
 
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice* pDevice;
     NTSTATUS status;
@@ -2208,13 +2237,13 @@ Return Value:
     FxPointerNotNull(pFxDriverGlobals, DeviceProperty);
 
     //
-    // Validate PropertyData 
+    // Validate PropertyData
     //
     if (DeviceProperty->Size != sizeof(WDF_DEVICE_PROPERTY_DATA)) {
         status = STATUS_INFO_LENGTH_MISMATCH;
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGPNP,
                      "PropertyData size (%d) incorrect, expected %d, %!STATUS!",
-                     DeviceProperty->Size, 
+                     DeviceProperty->Size,
                      sizeof(WDF_DEVICE_PROPERTY_DATA), status);
         return status;
     }
@@ -2223,7 +2252,7 @@ Return Value:
     if (!NT_SUCCESS(status)) {
         FxVerifierDbgBreakPoint(pFxDriverGlobals);
         return status;
-    } 
+    }
 
     FxPointerNotNull(pFxDriverGlobals, RequiredSize);
     FxPointerNotNull(pFxDriverGlobals, Type);
@@ -2281,7 +2310,7 @@ WDFEXPORT(WdfDeviceAllocAndQueryPropertyEx)(
 
 Routine Description:
 
-    This routine queries device property.   
+    This routine queries device property.
 
 Arguments:
 
@@ -2289,36 +2318,36 @@ Arguments:
 
     Device - WDF Device handle.
 
-    PropertyData - A pointer to WDF_DEVICE_PROPERTY_ DATA structure. 
-    
-    PoolType - A POOL_TYPE-typed enumerator that specifies the type of memory 
+    PropertyData - A pointer to WDF_DEVICE_PROPERTY_ DATA structure.
+
+    PoolType - A POOL_TYPE-typed enumerator that specifies the type of memory
                to be allocated.
 
-    PropertyMemoryAttributes - optional, A pointer to a caller-allocated 
+    PropertyMemoryAttributes - optional, A pointer to a caller-allocated
                WDF_OBJECT_ATTRIBUTES structure that describes object attributes
-               for the memory object that the function will allocate. This 
+               for the memory object that the function will allocate. This
                parameter is optional and can be WDF_NO_OBJECT_ATTRIBUTES.
 
-    PropertyMemory - A pointer to a WDFMEMORY-typed location that receives a 
+    PropertyMemory - A pointer to a WDFMEMORY-typed location that receives a
                handle to a framework memory object.
 
     Type - A pointer to a DEVPROPTYPE variable. If method successfully retrieves
                the property data, the routine writes the property type value to
-               this variable. This value indicates the type of property data 
+               this variable. This value indicates the type of property data
                that is in the Data buffer.
 
 Return Value:
 
-    Method returns an NTSTATUS value. This routine might return one of the 
+    Method returns an NTSTATUS value. This routine might return one of the
     following values. It might return other NTSTATUS-codes as well.
 
-    STATUS_SUCCESS  The operation succeeded. 
+    STATUS_SUCCESS  The operation succeeded.
     STATUS_INVALID_PARAMETER    One of the parameters is incorrect.
 
 --*/
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice* pDevice;
     NTSTATUS status;
@@ -2332,13 +2361,13 @@ Return Value:
     FxPointerNotNull(pFxDriverGlobals, DeviceProperty);
 
     //
-    // Validate PropertyData 
+    // Validate PropertyData
     //
     if (DeviceProperty->Size != sizeof(WDF_DEVICE_PROPERTY_DATA)) {
         status = STATUS_INFO_LENGTH_MISMATCH;
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGPNP,
                      "PropertyData size (%d) incorrect, expected %d, %!STATUS!",
-                     DeviceProperty->Size, 
+                     DeviceProperty->Size,
                      sizeof(WDF_DEVICE_PROPERTY_DATA), status);
         return status;
     }
@@ -2347,7 +2376,7 @@ Return Value:
     if (!NT_SUCCESS(status)) {
         FxVerifierDbgBreakPoint(pFxDriverGlobals);
         return status;
-    } 
+    }
 
     FxVerifierCheckNxPoolType(pFxDriverGlobals, PoolType, pFxDriverGlobals->Tag);
 
@@ -2395,7 +2424,7 @@ WDFEXPORT(WdfDeviceAssignProperty)(
 
 Routine Description:
 
-    This routine assigns interface property.   
+    This routine assigns interface property.
 
 Arguments:
 
@@ -2403,36 +2432,36 @@ Arguments:
 
     Device - WDF Device handle.
 
-    PropertyData - A pointer to WDF_DEVICE_PROPERTY_ DATA structure. 
-    
-    Type - Set this parameter to the DEVPROPTYPE value that specifies the type 
+    PropertyData - A pointer to WDF_DEVICE_PROPERTY_ DATA structure.
+
+    Type - Set this parameter to the DEVPROPTYPE value that specifies the type
            of the data that is supplied in the Data buffer.
 
-    BufferLength - Specifies the length, in bytes, of the buffer that 
+    BufferLength - Specifies the length, in bytes, of the buffer that
            PropertyBuffer points to.
-           
-    PropertyBuffer - optional, A pointer to the device interface property data. 
+
+    PropertyBuffer - optional, A pointer to the device interface property data.
            Set this parameter to NULL to delete the specified property.
 
 Return Value:
 
-    Mthod returns an NTSTATUS value. This routine might return one of the 
+    Mthod returns an NTSTATUS value. This routine might return one of the
     following values. It might return other NTSTATUS-codes as well.
 
-    STATUS_SUCCESS - The operation succeeded. 
+    STATUS_SUCCESS - The operation succeeded.
     STATUS_INVALID_PARAMETER - One of the parameters is incorrect.
 
 --*/
 
 {
     DDI_ENTRY();
-        
+
     PFX_DRIVER_GLOBALS pFxDriverGlobals;
     FxDevice *pDevice;
     NTSTATUS status;
 
     //
-    // Validate the Device object handle and get its FxDevice. Also get the 
+    // Validate the Device object handle and get its FxDevice. Also get the
     // driver globals pointer.
     //
     FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
@@ -2444,13 +2473,13 @@ Return Value:
     FxPointerNotNull(pFxDriverGlobals, DeviceProperty);
 
     //
-    // Validate PropertyData 
+    // Validate PropertyData
     //
     if (DeviceProperty->Size != sizeof(WDF_DEVICE_PROPERTY_DATA)) {
         status = STATUS_INFO_LENGTH_MISMATCH;
         DoTraceLevelMessage(pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGPNP,
                      "PropertyData size (%d) incorrect, expected %d, %!STATUS!",
-                     DeviceProperty->Size, 
+                     DeviceProperty->Size,
                      sizeof(WDF_DEVICE_PROPERTY_DATA), status);
         return status;
     }
@@ -2459,7 +2488,7 @@ Return Value:
     if (!NT_SUCCESS(status)) {
         FxVerifierDbgBreakPoint(pFxDriverGlobals);
         return status;
-    } 
+    }
 
     if (BufferLength == 0 && PropertyBuffer != NULL) {
         status = STATUS_INVALID_PARAMETER;
@@ -2468,7 +2497,7 @@ Return Value:
                     ", %!STATUS!", status);
         return status;
     }
-        
+
     status = pDevice->AssignProperty(DeviceProperty,
                                      FxDeviceProperty,
                                      Type,
@@ -2496,37 +2525,37 @@ WDFEXPORT(WdfDeviceConfigureWdmIrpDispatchCallback)(
     _In_opt_
     WDFCONTEXT DriverContext
     )
-    
+
 /*++
-    
+
     Routine Description:
 
         Configure callbacks for IRP_MJ_READ, IRP_MJ_WRITE, IRP_MJ_DEVICE_CONTROL, and
         IRP_MJ_INTERNAL_DEVICE_CONTROL (KMDF only). By default the I/O package sends all requests to
-        a device's default queue, or to the queues configured with 
+        a device's default queue, or to the queues configured with
         WdfDeviceConfigureRequestDisaptching. This DDI allows a driver specified
-        callback to select a different queue dynamically during runtime. 
- 
+        callback to select a different queue dynamically during runtime.
+
     Arguments:
-    
+
         Device - The device which is handling the I/O.
 
-        Driver - An optional driver handle. Used to associate the 
-                 callback with a specific class extension. 
-    
+        Driver - An optional driver handle. Used to associate the
+                 callback with a specific class extension.
+
         MajorFunction - IRP major function type to be forwarded to the callback
 
         EvtDeviceWdmIrpDispatch - Callback invoked when encountering the given major function.
 
         DriverContext - An optional untyped driver specified context.
-    
+
     Returns:
-    
+
         STATUS_SUCCESS on success
         STATUS_INVALID_PARAMETER if an incorrect MajorFunction was provided
         STATUS_INSUFFICIENT_RESOURCES if insufficient memory was available
         STATUS_INVALID_DEVICE_STATE if this DDI was called at an improper time
-    
+
  --*/
 {
     PFX_DRIVER_GLOBALS  pFxDriverGlobals;
@@ -2543,10 +2572,10 @@ WDFEXPORT(WdfDeviceConfigureWdmIrpDispatchCallback)(
                                    FX_TYPE_DEVICE,
                                    (PVOID *) &pDevice,
                                    &pFxDriverGlobals);
-    
+
     //
-    // Validate the MajorFunction provided. Note that 
-    // IRP_MJ_INTERNAL_DEVICE_CONTROL is KMDF only. 
+    // Validate the MajorFunction provided. Note that
+    // IRP_MJ_INTERNAL_DEVICE_CONTROL is KMDF only.
     //
     switch (MajorFunction) {
         case IRP_MJ_WRITE:
@@ -2564,13 +2593,13 @@ WDFEXPORT(WdfDeviceConfigureWdmIrpDispatchCallback)(
                 MajorFunction, status);
             goto exit;
     }
-    
+
     //
     // Validate the driver handle and get (if present) the associated cx info.
     //
     if (Driver != NULL) {
         FxDriver*   pDriver;
-        
+
         FxObjectHandleGetPtr(pFxDriverGlobals,
                              Driver,
                              FX_TYPE_DRIVER,
@@ -2601,7 +2630,7 @@ WDFEXPORT(WdfDeviceConfigureWdmIrpDispatchCallback)(
 #else
         deviceFlags = pDevice->GetDeviceObject()->GetDeviceObjectWdmFlags();
 #endif
-    
+
         //
         // This is a controldevice. Make sure the create is called after the device
         // is initialized and ready to accept I/O.
@@ -2683,7 +2712,7 @@ FX_VF_FUNCTION(VerifyWdfDeviceWdmDispatchIrpToIoQueue) (
         FxVerifierDbgBreakPoint(FxDriverGlobals);
         goto Done;
     }
-      
+
     //
     // Only read/writes/ctrls/internal_ctrls IRPs are allowed, i.e., the I/O request set.
     //
@@ -2694,29 +2723,29 @@ FX_VF_FUNCTION(VerifyWdfDeviceWdmDispatchIrpToIoQueue) (
                 "Only Read/Write/Control/Internal-Control IRPs can be "
                 "forwarded to I/O Queue 0x%p, Irp 0x%p, %!IRPMJ!, "
                 "IRP_MN %x, Device 0x%p, %!STATUS!",
-                 queue->GetHandle(), Irp, majorFunction, minorFunction, 
+                 queue->GetHandle(), Irp, majorFunction, minorFunction,
                  device->GetObjectHandle(), status);
         FxVerifierDbgBreakPoint(FxDriverGlobals);
         goto Done;
     }
 
     //
-    // Make sure queue can handle the request. 
+    // Make sure queue can handle the request.
     //
     if (FALSE == queue->IsIoEventHandlerRegistered(
                             (WDF_REQUEST_TYPE)majorFunction)) {
-            
+
         status = STATUS_INVALID_PARAMETER;
         DoTraceLevelMessage(
                 FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGIO,
                 "I/O Queue 0x%p cannot handle Irp 0x%p, %!IRPMJ!, "
                 "IRP_MN %x, Device 0x%p, %!STATUS!",
-                 queue->GetHandle(), Irp, majorFunction, minorFunction, 
+                 queue->GetHandle(), Irp, majorFunction, minorFunction,
                  device->GetObjectHandle(), status);
         FxVerifierDbgBreakPoint(FxDriverGlobals);
         goto Done;
     }
-                            
+
     if (device->m_ParentDevice == queue->GetDevice()) {
         //
         // Send to parent device's queue validation.
@@ -2732,23 +2761,23 @@ FX_VF_FUNCTION(VerifyWdfDeviceWdmDispatchIrpToIoQueue) (
         }
 
         //
-        // Make sure the child device is a PDO 
+        // Make sure the child device is a PDO
         //
-        ASSERT(device->IsPdo());            
+        ASSERT(device->IsPdo());
 
         //
-        // Check if the WdfPdoInitSetForwardRequestToParent was called to 
+        // Check if the WdfPdoInitSetForwardRequestToParent was called to
         // increase the StackSize of the child Device  to include the stack
         // size of the parent Device
         //
-        if (device->IsPnp() && 
+        if (device->IsPnp() &&
             device->GetPdoPkg()->m_AllowForwardRequestToParent == FALSE) {
             status = STATUS_INVALID_DEVICE_REQUEST;
             DoTraceLevelMessage(
                     FxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGIO,
                     "WdfPdoInitSetForwardRequestToParent not called on "
-                    "Device 0x%p, %!STATUS!", 
-                    device->GetObjectHandle(), status);            
+                    "Device 0x%p, %!STATUS!",
+                    device->GetObjectHandle(), status);
             FxVerifierDbgBreakPoint(FxDriverGlobals);
             goto Done;
         }
@@ -2768,8 +2797,205 @@ FX_VF_FUNCTION(VerifyWdfDeviceWdmDispatchIrpToIoQueue) (
             goto Done;
         }
     }
-    
-Done:    
+
+Done:
+    return status;
+}
+
+_Must_inspect_result_
+__drv_maxIRQL(PASSIVE_LEVEL)
+NTSTATUS
+WDFEXPORT(WdfDeviceWdmAssignPowerFrameworkSettings)(
+    __in
+    PWDF_DRIVER_GLOBALS DriverGlobals,
+    __in
+    WDFDEVICE Device,
+    __in
+    PWDF_POWER_FRAMEWORK_SETTINGS PowerFrameworkSettings
+    )
+/*++
+
+Routine Description:
+    The DDI is invoked by KMDF client drivers for single-component devices to
+    specify their power framework settings to KMDF. KMDF uses these settings on
+    Win8+ when registering with the power framework.
+
+    On Win7 and older operating systems the power framework is not available, so
+    KMDF does nothing.
+
+    Note: version 33+ UMDF driver can also call the DDI to configure PoFx/DFx.
+
+    DirectedPoFxEnabled
+
+    Directed PoFx (DFx) was implemented in Windows 10 version 1903 and later as
+    an option for drivers that use SystemManagedIdleTimeout(WithHint).
+
+     - For driver targeting pre-v31 WDF, use WdfDirectedPowerTransitionEnable
+       INF directive and specify 1 to opt-in to DFx.
+
+     - For driver targeting v31+ WDF, DFx is enabled by default. The driver can
+       use INF directive WdfDirectedPowerTransitionEnable and specify 0 to
+       opt-out of DFx if desired.
+
+     - For dirver targeting v33+ WDF, DFx is also enabled by default. The driver
+       can use either INF directive WdfDirectedPowerTransitionEnable = 0 or
+       calling WDF_POWER_FRAMEWORK_SETTINGS with DirectedPoFxEnabled = WdfFalse
+       (preferred) to opt-out of DFx. If both WDF_POWER_FRAMEWORK_SETTINGS and
+       INF directive are specified, the INF directive shall take precedence.
+
+Arguments:
+
+    Device - Handle to the framework device object for which power framework
+      settings are being specified.
+
+    PowerFrameworkSettings - Pointer to a WDF_POWER_FRAMEWORK_SETTINGS structure
+      that contains the client driver's power framework settings.
+
+Return Value:
+    An NTSTATUS value that denotes success or failure of the DDI
+
+--*/
+{
+    NTSTATUS status;
+    PFX_DRIVER_GLOBALS pFxDriverGlobals;
+    FxDevice *pDevice;
+    WDF_POWER_FRAMEWORK_SETTINGS pofxSettings;
+
+    //
+    // Validate the Device object handle and get its FxDevice. Also get the
+    // driver globals pointer.
+    //
+    FxObjectHandleGetPtrAndGlobals(GetFxDriverGlobals(DriverGlobals),
+                                   Device,
+                                   FX_TYPE_DEVICE,
+                                   (PVOID *) &pDevice,
+                                   &pFxDriverGlobals);
+
+    FxPointerNotNull(pFxDriverGlobals, PowerFrameworkSettings);
+
+    //
+    // Only power policy owners should call this DDI
+    //
+    if (pDevice->m_PkgPnp->IsPowerPolicyOwner() == FALSE) {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE 0x%p is not the power policy owner, so the caller cannot"
+            " assign power framework settings %!STATUS!", Device, status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+
+    //
+    // Validate the Settings parameter
+    //
+    if (PowerFrameworkSettings->Size != sizeof(WDF_POWER_FRAMEWORK_SETTINGS)
+#if (FX_CORE_MODE == FX_CORE_KERNEL_MODE)
+        && PowerFrameworkSettings->Size != sizeof(WDF_POWER_FRAMEWORK_SETTINGS_V1_31)
+#endif
+        ) {
+        status = STATUS_INFO_LENGTH_MISMATCH;
+        DoTraceLevelMessage(
+            pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+            "WDFDEVICE 0x%p Expected PowerFrameworkSettings size %d, actual %d,"
+            " %!STATUS!",
+            Device,
+            sizeof(WDF_POWER_FRAMEWORK_SETTINGS),
+            PowerFrameworkSettings->Size,
+            status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+
+    //
+    // Normalize WDF_POWER_FRAMEWORK_SETTINGS structure.
+    //
+    if (PowerFrameworkSettings->Size < sizeof(WDF_POWER_FRAMEWORK_SETTINGS)) {
+        //
+        // Init new fields to default values.
+        //
+        WDF_POWER_FRAMEWORK_SETTINGS_INIT(&pofxSettings);
+        //
+        // Copy over existing fields and readjust the struct size.
+        //
+        RtlCopyMemory(&pofxSettings, PowerFrameworkSettings, PowerFrameworkSettings->Size);
+        pofxSettings.Size = sizeof(WDF_POWER_FRAMEWORK_SETTINGS);
+
+        //
+        // Older version of client defaults to zero device flags, no DFx
+        //
+        pofxSettings.PoFxDeviceFlags = 0;
+
+        pofxSettings.DirectedPoFxEnabled = WdfFalse;
+
+        //
+        // Update DirectedPoFxEnabled. FxPkgPnp::PowerPolicySetS0IdleSettings
+        // duplicates the same logic if WdfDeviceWdmAssignPowerFrameworkSettings
+        // is not called.
+        //
+        if (FxLibraryGlobals.WdfDirectedPowerTransitionEnabled ||
+            GetFxDriverGlobals(DriverGlobals)->IsMinorVersionGreaterThanOrEqualTo(31)) {
+            pofxSettings.DirectedPoFxEnabled = WdfTrue;
+        }
+
+        //
+        // Use new config structure from now on.
+        //
+        PowerFrameworkSettings = &pofxSettings;
+    }
+
+#if (FX_CORE_MODE != FX_CORE_KERNEL_MODE)
+    if (PowerFrameworkSettings->EvtDeviceWdmPostPoFxRegisterDevice != NULL ||
+        PowerFrameworkSettings->EvtDeviceWdmPrePoFxUnregisterDevice != NULL ||
+        PowerFrameworkSettings->Component != NULL ||
+        PowerFrameworkSettings->ComponentActiveConditionCallback != NULL ||
+        PowerFrameworkSettings->ComponentIdleConditionCallback != NULL ||
+        PowerFrameworkSettings->ComponentIdleStateCallback != NULL ||
+        PowerFrameworkSettings->PowerControlCallback != NULL ||
+        PowerFrameworkSettings->PoFxDeviceContext != NULL) {
+        status = STATUS_INVALID_PARAMETER;
+        DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "UMDF WDFDEVICE 0x%p cannot register PoFx callbacks. %!STATUS!",
+                Device, status);
+        FxVerifierDbgBreakPoint(pFxDriverGlobals);
+        return status;
+    }
+#endif
+
+    //
+    // If settings for component 0 are specified, make sure it contains at least
+    // one F-state.
+    //
+    if (NULL != PowerFrameworkSettings->Component) {
+
+        if (0 == PowerFrameworkSettings->Component->IdleStateCount) {
+            status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "WDFDEVICE 0x%p Component settings are specified but "
+                "IdleStateCount is 0. %!STATUS!", Device, status);
+            FxVerifierDbgBreakPoint(pFxDriverGlobals);
+            return status;
+        }
+
+        if (NULL == PowerFrameworkSettings->Component->IdleStates) {
+            status = STATUS_INVALID_PARAMETER;
+            DoTraceLevelMessage(
+                pFxDriverGlobals, TRACE_LEVEL_ERROR, TRACINGDEVICE,
+                "WDFDEVICE 0x%p Component settings are specified but IdleStates"
+                " is NULL. %!STATUS!", Device, status);
+            FxVerifierDbgBreakPoint(pFxDriverGlobals);
+            return status;
+        }
+    }
+
+    //
+    // Assign the driver's settings
+    //
+    status = pDevice->m_PkgPnp->AssignPowerFrameworkSettings(
+                                            PowerFrameworkSettings);
+
     return status;
 }
 

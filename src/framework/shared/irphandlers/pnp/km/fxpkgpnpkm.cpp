@@ -348,7 +348,7 @@ FxPkgPnp::UpdateWmiInstanceForS0Idle(
                 );
         }
         break;
-        
+
     case RemoveInstance:
         if (m_PowerPolicyMachine.m_Owner->m_IdleSettings.WmiInstance != NULL) {
             //
@@ -363,19 +363,19 @@ FxPkgPnp::UpdateWmiInstanceForS0Idle(
                 );
         }
         break;
-        
+
     default:
         ASSERT(FALSE);
         break;
     }
-  
+
     return STATUS_SUCCESS;;
 }
 
 VOID
 FxPkgPnp::ReadRegistryS0Idle(
     __in  PCUNICODE_STRING ValueName,
-    __out BOOLEAN *Enabled
+    _Inout_ BOOLEAN *Enabled
     )
 {
     NTSTATUS status;
@@ -398,7 +398,36 @@ FxPkgPnp::ReadRegistryS0Idle(
             //
             *Enabled = (value == FALSE) ? FALSE : TRUE;
         }
-    } 
+    }
+}
+
+VOID
+FxPkgPnp::ReadRegistryWdfSetting(
+    _In_    PCUNICODE_STRING ValueName,
+    _Inout_ BOOLEAN *Enabled
+    )
+{
+    NTSTATUS status;
+    FxAutoRegKey hKey;
+
+    status = m_Device->OpenSettingsKey(&hKey.m_Key, STANDARD_RIGHTS_READ);
+
+    //
+    // Modify the value of Enabled only if success
+    //
+    if (NT_SUCCESS(status)) {
+        ULONG value;
+
+        status = FxRegKey::_QueryULong(
+            hKey.m_Key, ValueName, &value);
+
+        if (NT_SUCCESS(status)) {
+            //
+            // Normalize the ULONG value into a BOOLEAN
+            //
+            *Enabled = (value == FALSE) ? FALSE : TRUE;
+        }
+    }
 }
 
 NTSTATUS
@@ -441,7 +470,7 @@ FxPkgPnp::UpdateWmiInstanceForSxWake(
                 );
         }
         break;
-        
+
     case RemoveInstance:
         if (m_PowerPolicyMachine.m_Owner->m_WakeSettings.WmiInstance != NULL) {
             //
@@ -468,7 +497,7 @@ FxPkgPnp::UpdateWmiInstanceForSxWake(
 VOID
 FxPkgPnp::ReadRegistrySxWake(
     __in  PCUNICODE_STRING ValueName,
-    __out BOOLEAN *Enabled
+    _Inout_ BOOLEAN *Enabled
     )
 {
     FxAutoRegKey hKey;
@@ -484,7 +513,7 @@ FxPkgPnp::ReadRegistrySxWake(
 
         status = FxRegKey::_QueryULong(
             hKey.m_Key, ValueName, &value);
-        
+
         if (NT_SUCCESS(status)) {
             //
             // Normalize the ULONG value into a BOOLEAN
@@ -506,7 +535,7 @@ PnpPassThroughQIWorker(
     pCurStack = Irp->GetCurrentIrpStackLocation();
 
     ForwardIrp->SetStatus(STATUS_NOT_SUPPORTED);
-    
+
     pFwdStack = ForwardIrp->GetNextIrpStackLocation();
     pFwdStack->MajorFunction = Irp->GetMajorFunction();
     pFwdStack->MinorFunction = Irp->GetMinorFunction();
@@ -577,7 +606,7 @@ FxPkgPnp::QueryForD3ColdInterface(
 
             DoTraceLevelMessage(
                 GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGPNP,
-                "Failed to allocate IRP to get D3COLD_SUPPORT_INTERFACE from !devobj %p", 
+                "Failed to allocate IRP to get D3COLD_SUPPORT_INTERFACE from !devobj %p",
                 pdo);
         } else {
 
@@ -600,7 +629,7 @@ FxPkgPnp::QueryForD3ColdInterface(
             if (!NT_SUCCESS(status)) {
                 DoTraceLevelMessage(
                     GetDriverGlobals(), TRACE_LEVEL_VERBOSE, TRACINGPNP,
-                    "!devobj %p declined to supply D3COLD_SUPPORT_INTERFACE", 
+                    "!devobj %p declined to supply D3COLD_SUPPORT_INTERFACE",
                     pdo);
 
                 RtlZeroMemory(&m_D3ColdInterface, sizeof(m_D3ColdInterface));
@@ -650,8 +679,8 @@ FxPkgPnp::SleepStudyEvaluateParticipation(
 /*++
 
 Routine Description:
-    This routine is invoked by the power policy state machine. Its purpose 
-    is to see if the driver is a constraint to DRIPS, if it is then notify 
+    This routine is invoked by the power policy state machine. Its purpose
+    is to see if the driver is a constraint to DRIPS, if it is then notify
     WDF sub components that the driver is participating in the sleep study.
 
 Arguments:
@@ -668,6 +697,10 @@ Return Value:
     WNF_STATE_NAME wnfStateName = WNF_PO_DRIPS_DEVICE_CONSTRAINTS_REGISTERED;
     PSLEEP_STUDY_INTERFACE sleepStudy = NULL;
 
+
+
+
+
     if ((IsPowerPolicyOwner() == FALSE) ||
         FxLibraryGlobals.SleepStudyDisabled == TRUE) {
         //
@@ -683,24 +716,37 @@ Return Value:
 
 
 
-    if (!NT_SUCCESS(status) || platformInfo.AoAc == FALSE) {
-        // 
-        // Sleep Study is only supported on AOAC systems
-        //
-        if (!NT_SUCCESS(status)) {
-            DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR,
-                TRACINGPNP,
 
-                "Sleep Study for WDFDEVICE 0x%p", m_Device->GetHandle());
-        }
-        else {
-            status = STATUS_NOT_SUPPORTED;
-        }
-        goto Done;
-    }
 
-    sleepStudy = (PSLEEP_STUDY_INTERFACE) MxMemory::MxAllocatePoolWithTag(
-                                                NonPagedPool, 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    sleepStudy = (PSLEEP_STUDY_INTERFACE) MxMemory::MxAllocatePool2(
+                                                POOL_FLAG_NON_PAGED,
                                                 sizeof(SLEEP_STUDY_INTERFACE),
                                                 SLEEPSTUDY_POOL_TAG);
     if (sleepStudy == NULL) {
@@ -712,10 +758,8 @@ Return Value:
         goto Done;
     }
 
-    RtlZeroMemory(sleepStudy, sizeof(SLEEP_STUDY_INTERFACE));
-
     //
-    // m_SleepStudy may be accessed asynchronously, so first we must ensure 
+    // m_SleepStudy may be accessed asynchronously, so first we must ensure
     // its initialized prior to assigning it to m_SleepStudy
     //
     m_SleepStudy = sleepStudy;
@@ -732,7 +776,7 @@ Return Value:
 
     if (NT_SUCCESS(status)) {
         //
-        // Manualy check to see if the WNF state has been set incase the async 
+        // Manualy check to see if the WNF state has been set incase the async
         // notification fired already and we missed it.
         //
         SleepStudyEvaluateDripsConstraint(TRUE);
@@ -750,10 +794,10 @@ Done:
         m_SleepStudyTrackReferences = FALSE;
     }
 
-    // 
-    // NOTE: do not set m_SleepStudy to null once it is initialized. 
-    // Asynchronously WdfDeviceResume/StopIdle may call and access internal 
-    // structures if m_SleepStudy is valid. m_SleepStudy can only be freed 
+    //
+    // NOTE: do not set m_SleepStudy to null once it is initialized.
+    // Asynchronously WdfDeviceResume/StopIdle may call and access internal
+    // structures if m_SleepStudy is valid. m_SleepStudy can only be freed
     // during the destruction of the device.
     //
 }
@@ -766,12 +810,12 @@ FxPkgPnp::SleepStudyEvaluateDripsConstraint(
 /*++
 
 Routine Description:
-    This function evaluates the WnfState for 
-    WNF_PO_DRIPS_DEVICE_CONSTRAINTS_REGISTERED. This function can be called 
+    This function evaluates the WnfState for
+    WNF_PO_DRIPS_DEVICE_CONSTRAINTS_REGISTERED. This function can be called
     twice, once after initially registering for the async WNF notification.
-    This is to cover the case the notification fired prior to the driver 
-    starting. The 2nd is when the async notification fires. If 
-    IgnoreWnfQueryFailure is TRUE then a failure of MxQueryWnfStateData is ok 
+    This is to cover the case the notification fired prior to the driver
+    starting. The 2nd is when the async notification fires. If
+    IgnoreWnfQueryFailure is TRUE then a failure of MxQueryWnfStateData is ok
     (the data is not populated yet).
 
 Arguments:
@@ -789,7 +833,7 @@ Return Value:
     BOOLEAN isDripsConstraint;
     MdDeviceObject pdo;
     LONG initLib;
-    
+
     //
     // Retrieve notification data at PASSIVE
     //
@@ -817,7 +861,7 @@ Return Value:
         if (IgnoreWnfQueryFailure == TRUE) {
             //
             // Constraints are not registered yet, keep waiting.
-            // Leave status successful so we keep tracking references. 
+            // Leave status successful so we keep tracking references.
             //
             goto Done;
         }
@@ -826,43 +870,45 @@ Return Value:
     }
 
     ASSERT(constraintsRegistered == 1);
-    
+
     isDripsConstraint = FALSE;
-    pdo = m_Device->GetPhysicalDevice(); 
-
-    //
-    // Now see if this driver is a constraint
-    //
+    pdo = m_Device->GetPhysicalDevice();
 
 
 
 
 
 
-    if(!NT_SUCCESS(status) || isDripsConstraint == FALSE) {
-        if (!NT_SUCCESS(status)) {
-            DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR,
-                TRACINGPNP,
 
-                "WDFDEVICE 0x%p, %!STATUS!",
-                m_Device->GetHandle(), status);
-        }
-        status = STATUS_NOT_SUPPORTED;
-        goto Done;
-    }
 
-    ASSERT(isDripsConstraint == TRUE);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     initLib = InterlockedCompareExchange(&m_SleepStudy->LibInitializing, 1, 0);
 
     if (initLib == 0) {
-        // 
+        //
         // We won the race to initialize sleepstudy. We can get here either from
         // manually polling the WnfState after registering a subscriber or from
         // the async WNF notification indicating the state has been updated.
         //
 
-        status = SleepstudyHelper_Initialize(&m_SleepStudy->SleepStudyLibContext, 
+        status = SleepstudyHelper_Initialize(&m_SleepStudy->SleepStudyLibContext,
                                                 (PVOID) m_Device);
         if (!NT_SUCCESS(status)) {
             DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR,
@@ -891,9 +937,9 @@ FxPkgPnp::SleepStudyStopEvaluation(
 /*++
 
 Routine Description:
-    This function terminates the async WNF notification that may enable sleep 
-    study components within WDF. It synchronized the thread shutdown to 
-    guarantee after completion the WNF notification can no longer fire. This 
+    This function terminates the async WNF notification that may enable sleep
+    study components within WDF. It synchronized the thread shutdown to
+    guarantee after completion the WNF notification can no longer fire. This
     also means and wnfContext is no longer needed.
 
     Its called from the Power Policy state machine when its stopping.
@@ -950,7 +996,7 @@ FxPkgPnp::SleepStudyStop(
 }
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
-NTSTATUS 
+NTSTATUS
 FxPkgPnp::SleepStudyRegisterBlockingComponents(
     VOID
     )
@@ -978,7 +1024,7 @@ Return Value:
 
 
     DECLARE_UNICODE_STRING_SIZE(pdoFriendlyName, FRIENDLY_NAME_MAX_LENGTH);
-    
+
     ASSERT(m_SleepStudy != NULL && m_SleepStudy->ComponentPowerRef == NULL);
 
     parentPdo = GetDevice()->GetPhysicalDevice();
@@ -998,11 +1044,11 @@ Return Value:
 
     friendlyName.Length = 0;
     friendlyName.MaximumLength = sizeof(powerRefFriendlyName) +
-                                 pdoFriendlyName.Length + 
-                                 sizeof(GetDriverGlobals()->Public.DriverName);
+                                 pdoFriendlyName.Length +
+                                 sizeof(WCHAR) * WDF_DRIVER_GLOBALS_NAME_LEN;
 
-    friendlyName.Buffer = (WCHAR*) MxMemory::MxAllocatePoolWithTag(
-                NonPagedPool, 
+    friendlyName.Buffer = (WCHAR*) MxMemory::MxAllocatePool2(
+                POOL_FLAG_NON_PAGED,
                 friendlyName.MaximumLength,
                 SLEEPSTUDY_POOL_TAG);
     if (friendlyName.Buffer == NULL) {
@@ -1014,9 +1060,9 @@ Return Value:
         goto Done;
     }
 
-    status = RtlUnicodeStringPrintf(&friendlyName, 
-                                    powerRefFriendlyName, 
-                                    &pdoFriendlyName, 
+    status = RtlUnicodeStringPrintf(&friendlyName,
+                                    powerRefFriendlyName,
+                                    &pdoFriendlyName,
                                     GetDriverGlobals()->Public.DriverName);
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR,
@@ -1036,11 +1082,11 @@ Return Value:
             GetDriverGlobals(), TRACE_LEVEL_WARNING, TRACINGPNP,
             "WDFDEVICE 0x%p failed call to SleepstudyHelper_RegisterComponentEx, "
             "Sleep Study reports are disabled for the driver power references, "
-            "%!STATUS!", 
+            "%!STATUS!",
             GetDevice()->GetHandle(), status);
         goto Done;
     }
-    
+
     //
     // WDF components can now start forwarding calls to the Sleep Study
     //
@@ -1084,6 +1130,8 @@ Return Value:
 
 
 
+
+
         SleepstudyHelper_ComponentActiveLocked(m_SleepStudy->ComponentPowerRef);
     }
 
@@ -1094,4 +1142,33 @@ Done:
         MxMemory::MxFreePool(friendlyName.Buffer);
     }
     return status;
+}
+
+VOID
+FxPkgPnp::ReadRegistrySleepstudyEnabled(
+    __in  PCUNICODE_STRING ValueName,
+    _Inout_ BOOLEAN *Enabled
+    )
+{
+    NTSTATUS status;
+    FxAutoRegKey hKey;
+
+    status = m_Device->OpenSettingsKey(&hKey.m_Key, STANDARD_RIGHTS_READ);
+
+    //
+    // Modify the value of Enabled only if success
+    //
+    if (NT_SUCCESS(status)) {
+        ULONG value;
+
+        status = FxRegKey::_QueryULong(
+            hKey.m_Key, ValueName, &value);
+
+        if (NT_SUCCESS(status)) {
+            //
+            // Normalize the ULONG value into a BOOLEAN
+            //
+            *Enabled = (value == FALSE) ? FALSE : TRUE;
+        }
+    }
 }

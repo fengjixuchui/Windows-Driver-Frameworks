@@ -89,17 +89,22 @@ if ($serviceRunning -eq 0) {
 # If a GUID is not supplied by the user look up registry for WPP recorder trace GUID
 #
 $WppRecorderGuidName = "WppRecorder_TraceGuid"
-$RegPath   = "HKLM:\system\CurrentControlSet\Services\"
-$RegPath = $RegPath+$Service+"\Parameters\"
+$RegPathSvc = "HKLM:\system\CurrentControlSet\Services\"
+$RegPath = $RegPathSvc+$Service+"\Parameters\"
 if ($Guid -eq "Unknown") {
     Write-Verbose -message "Looking for $WppRecorderGuidName under key $RegPath"
 
-    $Guid = (Get-ItemProperty -path $RegPath -Name $WppRecorderGuidName -ErrorAction Ignore).$WppRecorderGuidName
-    if (!$Guid) {
+    $regProp = Get-ItemProperty -path $RegPath -Name $WppRecorderGuidName -ErrorAction Ignore
+    if (!$regProp) {
+        $RegPath = $RegPathSvc+$Service+"\SharedState\"
+        $regProp = Get-ItemProperty -path $RegPath -Name $WppRecorderGuidName -ErrorAction Ignore
+    }
+    if (!$regProp) {
         Write-Warning -Message "$WppRecorderGuidName not found under $RegPath Cannot capture WPP recorder trace."
         Write-Warning -Message "You can supply a GUID yourself using the -Guid switch"
         return
     }
+    $Guid = $regProp.$WppRecorderGuidName
 }
 
 #
@@ -157,5 +162,3 @@ if ($IncludeKmdfIfr) {
 
     Write-Host "KMDF IFR log written to KmdfIfrFor$Service.etl"
 }
-
-

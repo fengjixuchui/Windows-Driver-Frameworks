@@ -1619,7 +1619,9 @@ public:
         {
             FxCxCallbackSmIoInit,
             FxCxCallbackSmIoRestart,
+            FxCxCallbackSmIoRestartEx,
             FxCxCallbackSmIoSuspend,
+            FxCxCallbackSmIoSuspendEx,
             FxCxCallbackSmIoFlush,
             FxCxCallbackSmIoCleanup
         };
@@ -1633,19 +1635,13 @@ public:
                 callbackType = smIoCallbackList[loop];
                 context = cxInfo->CxPnpPowerCallbackContexts[callbackType];
 
-                if (context == NULL) {
-                    continue;
+                if (context != NULL) {
+                    //
+                    // Cx SmIo is used, so Self Managed Io State Machine is needed
+                    //
+                    smIoUsed = TRUE;
+                    break;
                 }
-
-                if (context->IsSelfManagedIoUsed() == FALSE) {
-                    continue;
-                }
-
-                //
-                // Cx SmIo is used, so Self Managed Io State Machine is needed
-                //
-                smIoUsed = TRUE;
-                break;
             }
 
             cxInfo = GetNextCxDeviceInfo(cxInfo);
@@ -2084,6 +2080,18 @@ public:
     static
     void
     PoFxDevicePowerNotRequired (
+        _In_ MdDeviceObject DeviceObject
+        );
+
+    static
+    void
+    PoFxDeviceDirectedPowerDown (
+        _In_ MdDeviceObject DeviceObject
+        );
+
+    static
+    void
+    PoFxDeviceDirectedPowerUp (
         _In_ MdDeviceObject DeviceObject
         );
 

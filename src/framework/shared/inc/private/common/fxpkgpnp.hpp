@@ -121,10 +121,12 @@ typedef struct _POWER_THREAD_INTERFACE {
 } POWER_THREAD_INTERFACE, *PPOWER_THREAD_INTERFACE;
 
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+
+
 typedef struct _SLEEP_STUDY_INTERFACE {
     //
     // SleepstudyHelper handle used to track current session.
-    // 
+    //
     SS_LIBRARY SleepStudyLibContext;
 
     //
@@ -180,8 +182,8 @@ typedef struct _SLEEP_STUDY_INTERFACE {
 // end_wpp
 
 //
-// These are defined in ntddk.h so its wpp custom type should be 
-// added to a common header along with other public enums. Howeever until that 
+// These are defined in ntddk.h so its wpp custom type should be
+// added to a common header along with other public enums. Howeever until that
 // is done, define custom type here.
 //
 // begin_wpp config
@@ -265,22 +267,14 @@ NTSTATUS
 // The naming of these values is very important.   The following macros rely on
 // it:
 //
-// (state related:)
 // SET_PNP_DEVICE_STATE_BIT
 // SET_TRI_STATE_FROM_STATE_BITS
 // GET_PNP_STATE_BITS_FROM_STRUCT
 //
-// (caps related:)
-// GET_PNP_CAP_BITS_FROM_STRUCT
-// SET_PNP_CAP_IF_TRUE
-// SET_PNP_CAP_IF_FALSE
-// SET_PNP_CAP
-//
 // They using the naming convention to generically  map the field name in
-// WDF_DEVICE_PNP_CAPABILITIES and WDF_DEVICE_STATE to the appropriate bit
-// values.
+// WDF_DEVICE_STATE to the appropriate bit values.
 //
-enum FxPnpStateAndCapValues {
+enum FxPnpStateValues {
     FxPnpStateDisabledFalse             = 0x00000000,
     FxPnpStateDisabledTrue              = 0x00000001,
     FxPnpStateDisabledUseDefault        = 0x00000002,
@@ -311,67 +305,86 @@ enum FxPnpStateAndCapValues {
     FxPnpStateResourcesChangedUseDefault= 0x00000800,
     FxPnpStateResourcesChangedMask      = 0x00000C00,
 
-    FxPnpStateMask                      = 0x00000FFF,
-
-    FxPnpCapLockSupportedFalse          = 0x00000000,
-    FxPnpCapLockSupportedTrue           = 0x00001000,
-    FxPnpCapLockSupportedUseDefault     = 0x00002000,
-    FxPnpCapLockSupportedMask           = 0x00003000,
-
-    FxPnpCapEjectSupportedFalse         = 0x00000000,
-    FxPnpCapEjectSupportedTrue          = 0x00004000,
-    FxPnpCapEjectSupportedUseDefault    = 0x00008000,
-    FxPnpCapEjectSupportedMask          = 0x0000C000,
-
-    FxPnpCapRemovableFalse              = 0x00000000,
-    FxPnpCapRemovableTrue               = 0x00010000,
-    FxPnpCapRemovableUseDefault         = 0x00020000,
-    FxPnpCapRemovableMask               = 0x00030000,
-
-    FxPnpCapDockDeviceFalse             = 0x00000000,
-    FxPnpCapDockDeviceTrue              = 0x00040000,
-    FxPnpCapDockDeviceUseDefault        = 0x00080000,
-    FxPnpCapDockDeviceMask              = 0x000C0000,
-
-    FxPnpCapUniqueIDFalse               = 0x00000000,
-    FxPnpCapUniqueIDTrue                = 0x00100000,
-    FxPnpCapUniqueIDUseDefault          = 0x00200000,
-    FxPnpCapUniqueIDMask                = 0x00300000,
-
-    FxPnpCapSilentInstallFalse          = 0x00000000,
-    FxPnpCapSilentInstallTrue           = 0x00400000,
-    FxPnpCapSilentInstallUseDefault     = 0x00800000,
-    FxPnpCapSilentInstallMask           = 0x00C00000,
-
-    FxPnpCapSurpriseRemovalOKFalse      = 0x00000000,
-    FxPnpCapSurpriseRemovalOKTrue       = 0x01000000,
-    FxPnpCapSurpriseRemovalOKUseDefault = 0x02000000,
-    FxPnpCapSurpriseRemovalOKMask       = 0x03000000,
-
-    FxPnpCapHardwareDisabledFalse       = 0x00000000,
-    FxPnpCapHardwareDisabledTrue        = 0x04000000,
-    FxPnpCapHardwareDisabledUseDefault  = 0x08000000,
-    FxPnpCapHardwareDisabledMask        = 0x0C000000,
-
-    FxPnpCapNoDisplayInUIFalse          = 0x00000000,
-    FxPnpCapNoDisplayInUITrue           = 0x10000000,
-    FxPnpCapNoDisplayInUIUseDefault     = 0x20000000,
-    FxPnpCapNoDisplayInUIMask           = 0x30000000,
-
-    FxPnpCapMask                        = 0x3FFFF000,
+    FxPnpStateAssignedToGuestFalse      = 0x00000000,
+    FxPnpStateAssignedToGuestTrue       = 0x00001000,
+    FxPnpStateAssignedToGuestUseDefault = 0x00002000,
+    FxPnpStateAssignedToGuestMask       = 0x00003000,
 };
 
-union FxPnpStateAndCaps {
+//
+// The naming of these values is very important.   The following macros rely on
+// it:
+//
+// GET_PNP_CAP_BITS_FROM_STRUCT
+// SET_PNP_CAP_IF_TRUE
+// SET_PNP_CAP_IF_FALSE
+// SET_PNP_CAP
+//
+// They using the naming convention to generically  map the field name in
+// WDF_DEVICE_PNP_CAPABILITIES to the appropriate bit values.
+//
+enum FxPnpCapValues {
+    FxPnpCapLockSupportedFalse          = 0x00000000,
+    FxPnpCapLockSupportedTrue           = 0x00000001,
+    FxPnpCapLockSupportedUseDefault     = 0x00000002,
+    FxPnpCapLockSupportedMask           = 0x00000003,
+
+    FxPnpCapEjectSupportedFalse         = 0x00000000,
+    FxPnpCapEjectSupportedTrue          = 0x00000004,
+    FxPnpCapEjectSupportedUseDefault    = 0x00000008,
+    FxPnpCapEjectSupportedMask          = 0x0000000C,
+
+    FxPnpCapRemovableFalse              = 0x00000000,
+    FxPnpCapRemovableTrue               = 0x00000010,
+    FxPnpCapRemovableUseDefault         = 0x00000020,
+    FxPnpCapRemovableMask               = 0x00000030,
+
+    FxPnpCapDockDeviceFalse             = 0x00000000,
+    FxPnpCapDockDeviceTrue              = 0x00000040,
+    FxPnpCapDockDeviceUseDefault        = 0x00000080,
+    FxPnpCapDockDeviceMask              = 0x000000C0,
+
+    FxPnpCapUniqueIDFalse               = 0x00000000,
+    FxPnpCapUniqueIDTrue                = 0x00000100,
+    FxPnpCapUniqueIDUseDefault          = 0x00000200,
+    FxPnpCapUniqueIDMask                = 0x00000300,
+
+    FxPnpCapSilentInstallFalse          = 0x00000000,
+    FxPnpCapSilentInstallTrue           = 0x00000400,
+    FxPnpCapSilentInstallUseDefault     = 0x00000800,
+    FxPnpCapSilentInstallMask           = 0x00000C00,
+
+    FxPnpCapSurpriseRemovalOKFalse      = 0x00000000,
+    FxPnpCapSurpriseRemovalOKTrue       = 0x00001000,
+    FxPnpCapSurpriseRemovalOKUseDefault = 0x00002000,
+    FxPnpCapSurpriseRemovalOKMask       = 0x00003000,
+
+    FxPnpCapHardwareDisabledFalse       = 0x00000000,
+    FxPnpCapHardwareDisabledTrue        = 0x00004000,
+    FxPnpCapHardwareDisabledUseDefault  = 0x00008000,
+    FxPnpCapHardwareDisabledMask        = 0x0000C000,
+
+    FxPnpCapNoDisplayInUIFalse          = 0x00000000,
+    FxPnpCapNoDisplayInUITrue           = 0x00010000,
+    FxPnpCapNoDisplayInUIUseDefault     = 0x00020000,
+    FxPnpCapNoDisplayInUIMask           = 0x00030000,
+};
+
+union FxPnpState {
     struct {
-        // States
         WDF_TRI_STATE Disabled : 2;
         WDF_TRI_STATE DontDisplayInUI : 2;
         WDF_TRI_STATE Failed : 2;
         WDF_TRI_STATE NotDisableable : 2;
         WDF_TRI_STATE Removed : 2;
         WDF_TRI_STATE ResourcesChanged : 2;
+        WDF_TRI_STATE AssignedToGuest : 2;
+    } ByEnum;
+    LONG Value;
+};
 
-        // Caps
+union FxPnpCaps {
+    struct {
         WDF_TRI_STATE LockSupported : 2;
         WDF_TRI_STATE EjectSupported : 2;
         WDF_TRI_STATE Removable : 2;
@@ -382,14 +395,6 @@ union FxPnpStateAndCaps {
         WDF_TRI_STATE HardwareDisabled : 2;
         WDF_TRI_STATE NoDisplayInUI : 2;
     } ByEnum;
-
-    //
-    // The bottom 3 nibbles (0xFFF) are the pnp state tri state values encoded
-    // down to 2 bits each.
-    //
-    // The remaining portion (0x3FFFF000) are the pnp caps tri state values
-    // encoded down to 2 bits each as well.
-    //
     LONG Value;
 };
 
@@ -473,7 +478,7 @@ public:
         )
     {
         NTSTATUS status;
-        
+
         status = m_PowerStateLock.Initialize();
         if (!NT_SUCCESS(status)) {
             return status;
@@ -619,7 +624,7 @@ protected:
     PnpMatchResources(
         VOID
         );
-    
+
     __drv_when(!NT_SUCCESS(return), __drv_arg(ResourcesMatched, _Must_inspect_result_))
     __drv_when(!NT_SUCCESS(return), __drv_arg(Progress, _Must_inspect_result_))
     NTSTATUS
@@ -837,7 +842,7 @@ protected:
     _SetPowerCapState(
         __in  ULONG Index,
         __in  DEVICE_POWER_STATE State,
-        __out PULONG Result
+        _Inout_ PULONG Result
         );
 
     static
@@ -914,8 +919,8 @@ protected:
         __inout FxPkgPnp* This
         );
 
-    static 
-    WDF_DEVICE_PNP_STATE 
+    static
+    WDF_DEVICE_PNP_STATE
     PnpEventQueryRemoveEnsureDeviceAwake(
         __inout FxPkgPnp* This
         );
@@ -944,8 +949,8 @@ protected:
         __inout FxPkgPnp* This
         );
 
-    static 
-    WDF_DEVICE_PNP_STATE 
+    static
+    WDF_DEVICE_PNP_STATE
     PnpEventQueryStopEnsureDeviceAwake(
         __inout FxPkgPnp* This
         );
@@ -1227,7 +1232,7 @@ protected:
     PnpPowerPolicyRemove(
         VOID
         );
-        
+
     VOID
     PnpFinishProcessingIrp(
         __in BOOLEAN IrpMustBePresent = TRUE
@@ -1290,7 +1295,7 @@ protected:
     virtual
     NTSTATUS
     PowerCheckParentOverload(
-        BOOLEAN* ParentOn
+        __out BOOLEAN* WaitForParentOn
         ) =0;
 
     static
@@ -1753,13 +1758,13 @@ protected:
     PowerUpFailedDerefParent(
         __inout FxPkgPnp*   This
         );
-    
+
     static
     WDF_DEVICE_POWER_STATE
     PowerUpFailed(
         __inout FxPkgPnp*   This
         );
-    
+
     static
     WDF_DEVICE_POWER_STATE
     PowerUpFailedPowerDown(
@@ -1772,13 +1777,13 @@ protected:
         __inout FxPkgPnp*   This
         );
 
-    static 
+    static
     WDF_DEVICE_POWER_STATE
     PowerInitialSelfManagedIoFailedStarted(
         __inout FxPkgPnp*   This
         );
 
-    static 
+    static
     WDF_DEVICE_POWER_STATE
     PowerStartSelfManagedIoFailedStarted(
         __inout FxPkgPnp*   This
@@ -1795,7 +1800,7 @@ protected:
     PowerGotoDxFailed(
         __inout FxPkgPnp*   This
         );
-    
+
     static
     WDF_DEVICE_POWER_STATE
     PowerGotoDxStoppedDisableInterrupt(
@@ -1804,38 +1809,74 @@ protected:
 
     static
     WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerUpFailedDerefParentNP(
-        __inout FxPkgPnp*   This
-        );
-    
-    static
-    WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerUpFailedNP(
-        __inout FxPkgPnp*   This
-        );
-    
-    static
-    WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerNotifyingD0ExitToWakeInterrupts(
+    PowerUpFailedDerefParentNP(
         __inout FxPkgPnp*   This
         );
 
     static
     WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerNotifyingD0EntryToWakeInterrupts(
+    PowerUpFailedNP(
         __inout FxPkgPnp*   This
         );
 
     static
     WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerNotifyingD0ExitToWakeInterruptsNP(
+    PowerNotifyingD0ExitToWakeInterrupts(
         __inout FxPkgPnp*   This
         );
 
     static
     WDF_DEVICE_POWER_STATE
-    FxPkgPnp::PowerNotifyingD0EntryToWakeInterruptsNP(
+    PowerNotifyingD0EntryToWakeInterrupts(
         __inout FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerNotifyingD0ExitToWakeInterruptsNP(
+        __inout FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerNotifyingD0EntryToWakeInterruptsNP(
+        __inout FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerWakingPostHardwareEnabled(
+        _Inout_ FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerWakingPostHardwareEnabledFailed(
+        _Inout_ FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerWakingPostHardwareEnabledNP(
+        _Inout_ FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerWakingPostHardwareEnabledFailedNP(
+        _Inout_ FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerD0StartingPostHardwareEnabled(
+        _Inout_ FxPkgPnp*   This
+        );
+
+    static
+    WDF_DEVICE_POWER_STATE
+    PowerInitialPostHardwareEnabledFailed(
+        _Inout_ FxPkgPnp*   This
         );
 
     // end power state machine table based callbacks
@@ -2521,6 +2562,18 @@ protected:
 
     static
     WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolSystemWakeDeviceD0PowerRequestFailed(
+        __inout FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolSystemWakeDevicePowerRequestFailed(
+        __inout FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
     PowerPolSleepingPowerDownNotProcessed(
         __inout FxPkgPnp* This
         );
@@ -2548,7 +2601,7 @@ protected:
     PowerPolTimerExpiredNoWakeReturnToActive(
         __inout FxPkgPnp* This
         );
-        
+
     static
     WDF_DEVICE_POWER_POLICY_STATE
     PowerPolTimerExpiredNoWakePoweredDownDisableIdleTimer(
@@ -2589,13 +2642,13 @@ protected:
     PowerPolCancelingUsbSSForSystemSleep(
         __inout FxPkgPnp* This
         );
-    
+
     static
     WDF_DEVICE_POWER_POLICY_STATE
     PowerPolStoppingD0CancelUsbSS(
         __inout FxPkgPnp* This
         );
-    
+
     static
     WDF_DEVICE_POWER_POLICY_STATE
     PowerPolWaitingArmedWakeInterruptFired(
@@ -2607,7 +2660,7 @@ protected:
     PowerPolSystemWakeDeviceWakeInterruptFired(
         __inout FxPkgPnp* This
         );
-    
+
     static
     WDF_DEVICE_POWER_POLICY_STATE
     PowerPolSystemWakeDeviceWakeInterruptFiredNP(
@@ -2619,7 +2672,173 @@ protected:
     PowerPolTimerExpiredWakeCapableWakeInterruptArrived(
         __inout FxPkgPnp* This
         );
-    
+
+    // Begin - PoFx Directed power management (DFx) PPO state machine callbacks.
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolStartedNotIdleCapableDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolStartedIdleCapableTimerCanceledForSleep(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolIdleCapableTimerNotExpiredDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolIdleCapableDirectedDownTriggerDPNR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingUnarmedDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolIdleCapableDirectedDownTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolStartedWakeCapableTimerCanceledForSleep(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWakeCapableTimerNotExpiredDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWakeCapableDirectedDownTriggerDPNR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCompletedPowerDownWaitForDirectedUp(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCompletedPowerDownDirectedTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableUsbSSDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedWakeInterruptFiredDuringPowerDownCheckDirected(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCompletedPowerDownCheckDirected(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeSucceededCheckDirected(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeSucceededWaitForDirectedUp(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeSucceededTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeFailedCheckDirected(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeFailedWaitForDirectedUp(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableWakeFailedTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownWakeInterruptFiredTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownWakeInterruptFired(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDown(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownWakeSucceededTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownWakeFailedCancelUsbSSTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolWaitingArmedDirectedDownUsbSSCompletedTriggerDPR(
+        _Inout_ FxPkgPnp* This
+        );
+
+    // End - PoFx Directed power management (DFx) PPO state machine callbacks.
+
     static
     WDF_DEVICE_POWER_POLICY_STATE
     NotPowerPolOwnerStarting(
@@ -2697,7 +2916,31 @@ protected:
     NotPowerPolOwnerRemoved(
         __inout FxPkgPnp* This
         );
-        
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolUsbSSCancelled(
+        __inout FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolTimerExpiredWakeCapableRevertArmWake(
+        __inout FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolSleepingWakeCancelWake(
+        __inout FxPkgPnp* This
+        );
+
+    static
+    WDF_DEVICE_POWER_POLICY_STATE
+    PowerPolSleepingWakeCancelWakeNP(
+        __inout FxPkgPnp* This
+        );
+
     // end power policy state machine table based callbacks
 
     VOID
@@ -2708,16 +2951,32 @@ protected:
     BOOLEAN
     PowerGotoDxIoStopped(
         VOID
-        );
+        )
+    {
+        return PowerGotoDxIoStoppedCommon(FALSE);
+    }
 
     BOOLEAN
     PowerGotoDxIoStoppedNP(
         VOID
+        )
+    {
+        return PowerGotoDxIoStoppedCommon(TRUE);
+    }
+
+    BOOLEAN
+    PowerGotoDxIoStoppedCommon(
+        _In_ BOOLEAN NonPageable
         );
 
     BOOLEAN
     PowerDmaEnableAndScan(
-        __in BOOLEAN ImplicitPowerUp
+        VOID
+        );
+
+    WDF_DEVICE_POWER_STATE
+    PowerWakingPostHardwareEnabledCommon(
+        _In_ BOOLEAN NonPageable
         );
 
     VOID
@@ -2829,8 +3088,18 @@ protected:
     NTSTATUS
     PowerPolicySendDevicePowerRequest(
         __in DEVICE_POWER_STATE DeviceState,
-        __in SendDeviceRequestAction Action
+        __in SendDeviceRequestAction Action,
+        __in RequestDIrpReason Reason
         );
+
+    VOID
+    PowerPolicyStopTrackingDevicePowerIrp(
+        VOID
+        )
+    {
+        m_PowerPolicyMachine.m_Owner->
+            m_DevicePowerIrpTracker.StopTrackingDevicePowerIrp();
+    }
 
     _Must_inspect_result_
     NTSTATUS
@@ -2877,7 +3146,7 @@ protected:
         )
     {
         FxIrp irp(m_PendingSystemPowerIrp);
-        
+
         //
         // In a FastS4 situation, Parameters.Power.State.SystemState will be
         // PowerSystemHibernate, while TargetSystemState will indicate the
@@ -3098,10 +3367,10 @@ protected:
         )
     {
         MdIrp irp;
-    
+
         irp = m_PendingPnPIrp;
         m_PendingPnPIrp = NULL;
-    
+
         return irp;
     }
 
@@ -3183,7 +3452,7 @@ protected:
     {
         DEVICE_POWER_STATE state;
         FxIrp irp(m_PendingDevicePowerIrp);
-        
+
         if (irp.GetIrp() == NULL) {
             return FALSE;
         }
@@ -3226,8 +3495,8 @@ protected:
 
     LONG
     GetUsageCount(
-        // __range(WdfSpecialFilePaging, WdfSpecialFileBoot)
-        __in __range(1, 4) ULONG Usage
+        // __range(WdfSpecialFilePaging, WdfSpecialFileGuestAssigned)
+        __in __range(1, 6) ULONG Usage
         )
     {
         return m_SpecialFileCount[Usage-1];
@@ -3241,11 +3510,28 @@ protected:
         if (GetUsageCount(WdfSpecialFilePaging) == 0 &&
             GetUsageCount(WdfSpecialFileHibernation) == 0 &&
             GetUsageCount(WdfSpecialFileDump) == 0 &&
-            GetUsageCount(WdfSpecialFileBoot) == 0) {
+            GetUsageCount(WdfSpecialFileBoot) == 0 &&
+            GetUsageCount(WdfSpecialFileGuestAssigned) == 0) {
             return FALSE;
         }
         else {
             return TRUE;
+        }
+    }
+
+    BOOLEAN
+    IsUsagePowerRelated (
+        __in WDF_SPECIAL_FILE_TYPE Type
+        )
+    {
+        switch (Type) {
+        case WdfSpecialFilePaging:         return TRUE;
+        case WdfSpecialFileHibernation:    return TRUE;
+        case WdfSpecialFileDump:           return TRUE;
+        case WdfSpecialFileBoot:           return FALSE;
+        case WdfSpecialFilePostDisplay:    return FALSE;
+        case WdfSpecialFileGuestAssigned:  return FALSE;
+        default:           ASSERT(FALSE);  return FALSE;
         }
     }
 
@@ -3256,11 +3542,13 @@ protected:
         )
     {
         switch (Type) {
-        case WdfSpecialFilePaging:       return DeviceUsageTypePaging;
-        case WdfSpecialFileHibernation:  return DeviceUsageTypeHibernation;
-        case WdfSpecialFileDump:         return DeviceUsageTypeDumpFile;
-        case WdfSpecialFileBoot:         return DeviceUsageTypeBoot;
-        default:           ASSERT(FALSE);return DeviceUsageTypePaging;
+        case WdfSpecialFilePaging:         return DeviceUsageTypePaging;
+        case WdfSpecialFileHibernation:    return DeviceUsageTypeHibernation;
+        case WdfSpecialFileDump:           return DeviceUsageTypeDumpFile;
+        case WdfSpecialFileBoot:           return DeviceUsageTypeBoot;
+        case WdfSpecialFilePostDisplay:    return DeviceUsageTypePostDisplay;
+        case WdfSpecialFileGuestAssigned:  return DeviceUsageTypeGuestAssigned;
+        default:           ASSERT(FALSE);  return DeviceUsageTypePaging;
         }
     }
 
@@ -3275,6 +3563,8 @@ protected:
         case DeviceUsageTypeHibernation:    return WdfSpecialFileHibernation;
         case DeviceUsageTypeDumpFile:       return WdfSpecialFileDump;
         case DeviceUsageTypeBoot:           return WdfSpecialFileBoot;
+        case DeviceUsageTypePostDisplay:    return WdfSpecialFilePostDisplay;
+        case DeviceUsageTypeGuestAssigned:  return WdfSpecialFileGuestAssigned;
         default:            ASSERT(FALSE);  return WdfSpecialFilePaging;
         }
     }
@@ -3310,7 +3600,7 @@ public:
         __in FxPnpEvent Event,
         __in BOOLEAN ProcessEventOnDifferentThread = FALSE
         );
-    
+
     VOID
     PowerProcessEvent(
         __in FxPowerEvent Event,
@@ -3385,7 +3675,7 @@ public:
     RegisterPowerPolicyWmiInstance(
         __in  const GUID* Guid,
         __in  FxWmiInstanceInternalCallbacks* Callbacks,
-        __out FxWmiInstanceInternal** Instance
+        _Outptr_ FxWmiInstanceInternal** Instance
         );
 
     NTSTATUS
@@ -3397,7 +3687,7 @@ public:
     AssignPowerFrameworkSettings(
         __in PWDF_POWER_FRAMEWORK_SETTINGS PowerFrameworkSettings
         );
-        
+
     NTSTATUS
     PowerPolicySetSxWakeSettings(
         __in PWDF_DEVICE_POWER_POLICY_WAKE_SETTINGS Settings,
@@ -3405,7 +3695,26 @@ public:
         __in BOOLEAN IndicateChildWakeOnParentWake
         );
 
-private: 
+    VOID
+    SaveRequestD0IrpReasonHint(
+        _In_ RequestDIrpReason Reason
+        )
+    {
+        if (IsPowerPolicyOwner()) {
+            m_PowerPolicyMachine.m_Owner->m_DevicePowerIrpTracker.SaveRequestD0IrpReasonHint(Reason);
+        }
+    }
+
+    static
+    ULONGLONG
+    CompactStatesToBytes(
+        _In_reads_(8) USHORT* History,
+        _In_ UCHAR   Depth,
+        _In_ UCHAR   Index,
+        _In_ USHORT  FirstState
+        );
+
+private:
 
     VOID
     DisconnectInterruptNP(
@@ -3420,7 +3729,13 @@ private:
     VOID
     ReadRegistryS0Idle(
         __in PCUNICODE_STRING ValueName,
-        __out BOOLEAN *Enabled
+        _Inout_ BOOLEAN *Enabled
+        );
+
+    VOID
+    ReadRegistryWdfSetting(
+        _In_    PCUNICODE_STRING ValueName,
+        _Inout_ BOOLEAN *Enabled
         );
 
     NTSTATUS
@@ -3431,7 +3746,7 @@ private:
     VOID
     ReadRegistrySxWake(
         __in PCUNICODE_STRING ValueName,
-        __out BOOLEAN *Enabled
+        _Inout_ BOOLEAN *Enabled
         );
 
     VOID
@@ -3452,6 +3767,14 @@ private:
         _In_ FxWmiInstanceAction Action,
         _In_ BOOLEAN ForS0Idle
         );
+
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
+    VOID
+    ReadRegistrySleepstudyEnabled(
+        __in PCUNICODE_STRING ValueName,
+        _Inout_ BOOLEAN *Enabled
+        );
+#endif
 
 public:
     BOOLEAN
@@ -3571,7 +3894,7 @@ public:
     {
         m_PowerPolicyMachine.m_Owner->m_PowerIdleMachine.IoDecrement(Tag, Line, File);
     }
-    
+
     BOOLEAN
     HasPowerThread(
         VOID
@@ -3773,6 +4096,8 @@ public:
         if (IsPowerPolicyOwner()) {
             NTSTATUS status;
 
+            SaveRequestD0IrpReasonHint(RequestD0ForChildDevice);
+
             //
             // By referencing the parent (this device) we make sure that if the
             // parent is in Dx, we force it back into D0 so that this child can
@@ -3848,10 +4173,12 @@ public:
     POWER_ACTION
     GetSystemPowerAction(
         VOID
-        )
-    {
-        return (POWER_ACTION) m_SystemPowerAction;
-    }
+        );
+
+    WDF_POWER_DEVICE_STATE
+    GetTargetDevicePowerStateFromPendingDevicePowerDownIrp(
+        VOID
+        );
 
     VOID
     ProcessDelayedDeletion(
@@ -3901,7 +4228,7 @@ public:
     AckPendingWakeInterruptOperation(
         __in BOOLEAN ProcessPowerEventOnDifferentThread
         );
-    
+
     VOID
     SendEventToAllWakeInterrupts(
         __in enum  FxWakeInterruptEvents WakeInterruptEvent
@@ -4092,7 +4419,8 @@ private:
         //
         PowerPolicyBlockChildrenPowerUp();
 
-        return PowerPolicySendDevicePowerRequest(DxState, Action);
+        return PowerPolicySendDevicePowerRequest(DxState, Action,
+                    RequestDxForSx);
     }
 
     VOID
@@ -4116,6 +4444,16 @@ private:
         VOID
         );
 
+    VOID
+    PowerPolDirectedTransitionTriggerDPR(
+        VOID
+        );
+
+    VOID
+    PowerPolDirectedTransitionTriggerDPNR(
+        VOID
+        );
+
 public:
     _Must_inspect_result_
     NTSTATUS
@@ -4123,7 +4461,7 @@ public:
         __inout PCM_PARTIAL_RESOURCE_DESCRIPTOR* CmResourceRaw,
         __inout PCM_PARTIAL_RESOURCE_DESCRIPTOR* CmResource
         );
-    
+
     _Must_inspect_result_
     NTSTATUS
     ValidateInterruptResourceCm(
@@ -4162,6 +4500,16 @@ public:
         ++m_WakeInterruptCount;
     }
 
+    VOID
+    WakeInterruptDestroyed(
+        VOID
+        )
+    {
+        ASSERT(IsPowerPolicyOwner() != FALSE);
+
+        --m_WakeInterruptCount;
+    }
+
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     _IRQL_requires_max_(PASSIVE_LEVEL)
     static
@@ -4170,19 +4518,19 @@ public:
         _In_ PMxWnfSubscriptionContext SubscriptionContext,
         _In_ PVOID CallbackContext
         );
-        
+
     _IRQL_requires_max_(PASSIVE_LEVEL)
     VOID
     SleepStudyEvaluateParticipation(
         VOID
         );
-        
+
     _IRQL_requires_max_(PASSIVE_LEVEL)
     VOID
     SleepStudyEvaluateDripsConstraint(
         _In_ BOOLEAN ManualCheck
         );
-        
+
     _IRQL_requires_max_(PASSIVE_LEVEL)
     VOID
     SleepStudyStopEvaluation(
@@ -4196,13 +4544,13 @@ public:
         );
 
     _IRQL_requires_max_(PASSIVE_LEVEL)
-    NTSTATUS 
+    NTSTATUS
     SleepStudyRegisterBlockingComponents(
         VOID
         );
 
     _IRQL_requires_max_(DISPATCH_LEVEL)
-    BOOLEAN 
+    BOOLEAN
     __inline
     IsSleepStudyTrackingRefs(
         VOID
@@ -4220,7 +4568,7 @@ public:
     /*++
 
     Routine Description:
-        If the sleep study is enabled, this function will call into the sleep 
+        If the sleep study is enabled, this function will call into the sleep
         study library and reset the time the component was marked blocking.
 
     Arguments:
@@ -4246,8 +4594,8 @@ public:
     /*++
 
     Routine Description:
-        If this sleep study is enabled, this function will decrement the power 
-        reference count. When transitioning to 0 the components is marked as 
+        If this sleep study is enabled, this function will decrement the power
+        reference count. When transitioning to 0 the components is marked as
         no longer blocking DRIPS
 
     Arguments:
@@ -4259,7 +4607,7 @@ public:
     --*/
     {
         LONG c = InterlockedDecrement(&m_SleepStudyPowerRefIoCount);
-        if (c == 0 && m_SleepStudy != NULL && 
+        if (c == 0 && m_SleepStudy != NULL &&
             m_SleepStudy->ComponentPowerRef != NULL) {
             SleepstudyHelper_ComponentInactive(m_SleepStudy->ComponentPowerRef);
         }
@@ -4274,8 +4622,8 @@ public:
     /*++
 
     Routine Description:
-        If sleep study is enabled, this function will increment the power 
-        reference count. When transitioning from 1 to 0 the components is 
+        If sleep study is enabled, this function will increment the power
+        reference count. When transitioning from 1 to 0 the components is
         marked as blocking DRIPS
 
     Arguments:
@@ -4287,7 +4635,7 @@ public:
     --*/
     {
         LONG c = InterlockedIncrement(&m_SleepStudyPowerRefIoCount);
-        if (c == 1 && m_SleepStudy != NULL && 
+        if (c == 1 && m_SleepStudy != NULL &&
             m_SleepStudy->ComponentPowerRef != NULL) {
             SleepstudyHelper_ComponentActive(m_SleepStudy->ComponentPowerRef);
         }
@@ -4299,7 +4647,8 @@ public:
     //
 public:
 
-    FxPnpStateAndCaps m_PnpStateAndCaps;
+    FxPnpState m_PnpState;
+    FxPnpCaps m_PnpCaps;
 
     ULONG m_PnpCapsAddress;
     ULONG m_PnpCapsUINumber;
@@ -4379,6 +4728,7 @@ public:
     //
     D3COLD_SUPPORT_INTERFACE m_D3ColdInterface;
 
+#if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     //
     // Device companion target
     //
@@ -4388,10 +4738,12 @@ public:
     FxCompanionTarget*
     GetCompanionTarget(
         VOID
-        ) 
+        )
     {
         return m_CompanionTarget;
     }
+#endif
+
 protected:
     //
     // Event that is set when processing a remove device is complete
@@ -4483,20 +4835,20 @@ protected:
     BOOLEAN m_HasPowerThread;
 
     //
-    // If TRUE, we guarantee that in *all* cases that the ReleaseHardware 
-    // callback for the current device is invoked only after all descendent 
+    // If TRUE, we guarantee that in *all* cases that the ReleaseHardware
+    // callback for the current device is invoked only after all descendent
     // devices have already been removed. We do this by ensuring that
-    // ReleaseHardware is only ever invoked when there is a PNP IRP such as 
-    // remove, surprise-remove or stop is pending in the device. PNP already 
-    // ensures that it sends us that IRP only after all child devices have 
+    // ReleaseHardware is only ever invoked when there is a PNP IRP such as
+    // remove, surprise-remove or stop is pending in the device. PNP already
+    // ensures that it sends us that IRP only after all child devices have
     // processed the corresponding IRP in their stacks.
     //
-    // Even if FALSE, in *most* cases, the ReleaseHardware callback of the 
+    // Even if FALSE, in *most* cases, the ReleaseHardware callback of the
     // current device should still be invoked only after all descendent devices
-    // have already been stopped/removed. However, in some failure paths we 
-    // might invoke the ReleaseHardware callback of the current device before 
-    // all descendent devices have been stopped. In these cases, we do not wait 
-    // for the surprise-remove IRP sent as a result of the failure in order to 
+    // have already been stopped/removed. However, in some failure paths we
+    // might invoke the ReleaseHardware callback of the current device before
+    // all descendent devices have been stopped. In these cases, we do not wait
+    // for the surprise-remove IRP sent as a result of the failure in order to
     // invoke ReleaseHardware. Instead, we invoke it proactively.
     //
     // The default value is FALSE.
@@ -4507,7 +4859,7 @@ protected:
     // GUID for querying for a power thread down the stack
     //
     static const GUID GUID_POWER_THREAD_INTERFACE;
-    
+
 #if (FX_CORE_MODE==FX_CORE_KERNEL_MODE)
     //
     // Interrupt APIs for Vista and forward
@@ -4546,23 +4898,23 @@ private:
     FxCREvent m_CleanupEventUm;
     MxEvent m_RemoveEventUm;
 #endif
-    
+
     ULONG  m_InterruptObjectCount;
 
     LIST_ENTRY  m_InterruptListHead;
-    
+
     //
     // Number of interrupts that are declared to be capable
     // of waking from low power
     //
     ULONG m_WakeInterruptCount;
-    
+
     //
     // Count that keeps track of the number of wake interrupt
-    // machines that have acknowledged back an event queued 
+    // machines that have acknowledged back an event queued
     // in to them by the device level PnP/Power code
     //
-    ULONG m_WakeInterruptPendingAckCount;  
+    ULONG m_WakeInterruptPendingAckCount;
 
     //
     // Keeps track of whether the last system wake was due to
@@ -4589,16 +4941,16 @@ private:
     //
     // Sleep Study struct used to track session - this is all the data that can be
     // allocated dynamically.
-    // 
+    //
     PSLEEP_STUDY_INTERFACE m_SleepStudy;
-    
+
     //
     // Count of driver requested power references
     //
     volatile LONG m_SleepStudyPowerRefIoCount;
 
     //
-    // Flag to indicate if m_SleepStudyPowerRefIoCount should be used to track 
+    // Flag to indicate if m_SleepStudyPowerRefIoCount should be used to track
     // power references
     //
     BOOLEAN m_SleepStudyTrackReferences;
@@ -4724,7 +5076,9 @@ private:
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapablePowerDownOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapableSendWakeOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapableUsbSSOtherStates[];
+    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapableUsbSSDirectedDownOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolWaitingArmedOtherStates[];
+    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolWaitingArmedDirectedDownOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolDisarmingWakeForSystemSleepCompletePowerUpOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolCancelingWakeForSystemSleepWakeCanceledOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolWokeFromS0OtherStates[];
@@ -4766,8 +5120,8 @@ private:
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolRestartingOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolStoppingCancelWakeOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolCancelUsbSSOtherStates[];
-    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolSleepingWakeRevertArmWakeOtherStates[];
-    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolSleepingWakeRevertArmWakeNPOtherStates[];
+    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolSleepingWakeCancelWakeOtherStates[];
+    static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolSleepingWakeCancelWakeNPOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolRemovedOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapableWakeInterruptArrivedOtherStates[];
     static const POWER_POLICY_EVENT_TARGET_STATE m_PowerPolTimerExpiredWakeCapablePowerDownFailedWakeInterruptArrivedOtherStates[];
@@ -4835,6 +5189,9 @@ public:
     FxPnpDeviceD0EntryPostInterruptsEnabled m_DeviceD0EntryPostInterruptsEnabled;
     FxPnpDeviceD0ExitPreInterruptsDisabled  m_DeviceD0ExitPreInterruptsDisabled;
     FxPnpDeviceD0Exit                       m_DeviceD0Exit;
+
+    FxPnpDeviceD0EntryPostHwEnabled     m_DeviceD0EntryPostHardwareEnabled;
+    FxPnpDeviceD0ExitPreHwDisabled      m_DeviceD0ExitPreHardwareDisabled;
 
     FxPnpDevicePrepareHardware          m_DevicePrepareHardware;
     FxPnpDeviceReleaseHardware          m_DeviceReleaseHardware;

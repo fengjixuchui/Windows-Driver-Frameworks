@@ -19,7 +19,7 @@ Revision History:
 
 
         Made mode agnostic
-        
+
         IMPORTANT: Common code must call Initialize method of
         FxObject before using it
 
@@ -195,8 +195,8 @@ enum FxObjectDroppedEvent {
         __in PFX_DRIVER_GLOBALS FxDriverGlobals                 \
         )                                                   \
     {                                                       \
-        return FxObjectHandleAlloc(FxDriverGlobals,         \
-                                   NonPagedPool,            \
+        return FxObjectHandleAlloc2(FxDriverGlobals,        \
+                                   POOL_FLAG_NON_PAGED,     \
                                    Size,                    \
                                    0,                       \
                                    WDF_NO_OBJECT_ATTRIBUTES,\
@@ -236,7 +236,7 @@ enum FxObjectDebugExtensionValues {
 class UfxObject;
 
 class FxObject {
-    
+
     friend UfxObject; //UMDF object wrapper
 
     friend FxDisposeList;
@@ -244,12 +244,12 @@ class FxObject {
 
 private:
 
-#if FX_CORE_MODE==FX_CORE_USER_MODE        
+#if FX_CORE_MODE==FX_CORE_USER_MODE
 #ifndef INLINE_WRAPPER_ALLOCATION
     PVOID         m_COMWrapper;
 #endif
 #endif
-    
+
     WDFTYPE       m_Type;
 
     //
@@ -286,6 +286,8 @@ private:
             USHORT HasDebug : 1;
             USHORT EarlyDisposedExt : 1;
             USHORT TraceState : 1;
+            USHORT HasCleanup : 1;
+            USHORT DisposeOverride : 1;
         } m_ObjectFlagsByName;
     };
 
@@ -342,11 +344,11 @@ private:
     {
         // Always make the caller supply a type and size
     }
-    
+
     // Do not specify argument names
     FX_DECLARE_VF_FUNCTION_P1(
-    VOID, 
-    VerifyConstruct, 
+    VOID,
+    VerifyConstruct,
         _In_ BOOLEAN
         );
 
@@ -500,14 +502,14 @@ public:
 
 #ifdef INLINE_WRAPPER_ALLOCATION
 
-#if FX_CORE_MODE==FX_CORE_USER_MODE        
+#if FX_CORE_MODE==FX_CORE_USER_MODE
     static
     USHORT
     GetWrapperSize(
         );
 
     virtual
-    PVOID        
+    PVOID
     GetCOMWrapper(
         ) = 0;
 
@@ -525,7 +527,7 @@ public:
 
 #else
 
-#if FX_CORE_MODE==FX_CORE_USER_MODE        
+#if FX_CORE_MODE==FX_CORE_USER_MODE
     PVOID GetCOMWrapper(){ return m_COMWrapper; }
 
     void SetCOMWrapper(__drv_aliasesMem PVOID Wrapper){ m_COMWrapper = Wrapper; }
@@ -554,13 +556,13 @@ public:
     {
         UNREFERENCED_PARAMETER(Type);
 
-        return FxObjectHandleAlloc(FxDriverGlobals,
-                                   NonPagedPool,
-                                   Size,
-                                   0,
-                                   WDF_NO_OBJECT_ATTRIBUTES,
-                                   0,
-                                   Type);
+        return FxObjectHandleAlloc2(FxDriverGlobals,
+                                    POOL_FLAG_NON_PAGED,
+                                    Size,
+                                    0,
+                                    WDF_NO_OBJECT_ATTRIBUTES,
+                                    0,
+                                    Type);
     }
 
     PVOID
@@ -572,13 +574,13 @@ public:
         __in USHORT ExtraSize = 0
         )
     {
-        return FxObjectHandleAlloc(FxDriverGlobals,
-                                   NonPagedPool,
-                                   Size,
-                                   0,
-                                   Attributes,
-                                   ExtraSize,
-                                   FxObjectTypeExternal);
+        return FxObjectHandleAlloc2(FxDriverGlobals,
+                                    POOL_FLAG_NON_PAGED,
+                                    Size,
+                                    0,
+                                    Attributes,
+                                    ExtraSize,
+                                    FxObjectTypeExternal);
     }
 
     VOID
@@ -684,7 +686,7 @@ public:
     _ReferenceActual(
         __in        WDFOBJECT Object,
         __in_opt    PVOID Tag,
-        __in        LONG Line, 
+        __in        LONG Line,
         __in        PCSTR File
         )
     {
@@ -699,7 +701,7 @@ public:
         }
         else {
             pObject->AddRefOverride(offset, Tag, Line, File);
-        }        
+        }
     }
 
     static
@@ -708,7 +710,7 @@ public:
     _DereferenceActual(
         __in        WDFOBJECT Object,
         __in_opt    PVOID Tag,
-        __in        LONG Line, 
+        __in        LONG Line,
         __in        PCSTR File
         )
     {
@@ -1219,9 +1221,15 @@ public:
     _Must_inspect_result_
     NTSTATUS
     AddContext(
-        __in FxContextHeader *Header,
-        __in PVOID* Context,
-        __in PWDF_OBJECT_ATTRIBUTES Attributes
+        _In_         FxContextHeader*       Header,
+        _Outptr_opt_ PVOID*                 Context,
+        _In_opt_     PWDF_OBJECT_ATTRIBUTES Attributes
+        );
+
+    _Must_inspect_result_
+    NTSTATUS
+    MoveContexts(
+        _In_ FxObject* TargetObject
         );
 
     //
@@ -1388,11 +1396,11 @@ private:
         )
     {
         return FLAG_TO_BOOL(m_ObjectFlags, FXOBJECT_FLAGS_FORCE_DISPOSE_THREAD);
-    }       
+    }
 
     BOOLEAN
     ShouldDeferDisposeLocked(
-        __out_opt PKIRQL PreviousIrql = NULL
+        _In_opt_ PKIRQL PreviousIrql = NULL
         )
     {
         if (IsForceDisposeThreadLocked()) {

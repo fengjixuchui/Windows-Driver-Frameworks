@@ -171,9 +171,9 @@ FxpGetImageBase(
     //
     // Allocate returned-sized memory for the modules area.
     //
-    modules = (AUX_MODULE_EXTENDED_INFO*) ExAllocatePoolWithTag(PagedPool,
-                                                                modulesSize,
-                                                                '30LW');
+    modules = (AUX_MODULE_EXTENDED_INFO*) ExAllocatePool2(POOL_FLAG_PAGED,
+                                                          modulesSize,
+                                                          '30LW');
     if (NULL == modules) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto exit;
@@ -312,7 +312,7 @@ Return Value:
 
 
 
-    
+
     return found;
 }
 
@@ -361,7 +361,7 @@ Notes:
 
     ASSERT(ReasonSpecificLength >= sizeof(KBUGCHECK_SECONDARY_DUMP_DATA));
     ASSERT(Reason == KbCallbackSecondaryDumpData);
-    
+
     dumpData = (PKBUGCHECK_SECONDARY_DUMP_DATA) ReasonSpecificData;
 
     //
@@ -410,7 +410,7 @@ Notes:
         // Let everyone know that we got the best match.
         //
         FxLibraryGlobals.BestDriverForDumpLog = fxDriverGlobals;
-        
+
         //
         // Exact match driver.
         //
@@ -418,11 +418,11 @@ Notes:
     }
     else if (NULL == FxLibraryGlobals.BestDriverForDumpLog) {
         //
-        // So far we didn't get a perfect match. Make a best effort 
+        // So far we didn't get a perfect match. Make a best effort
         // to find a good candidate for the driver dump log.
         //
         if (fxDriverGlobals->FxTrackDriverForMiniDumpLog &&
-            FxLibraryGlobals.DriverTracker.GetCurrentTrackedDriver() == 
+            FxLibraryGlobals.DriverTracker.GetCurrentTrackedDriver() ==
                 fxDriverGlobals) {
             //
             // Best effort match driver.
@@ -444,9 +444,7 @@ FxRegisterBugCheckCallback(
     __in    PDRIVER_OBJECT DriverObject
     )
 {
-    UNICODE_STRING funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD callbackRecord;
-    PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
     BOOLEAN enableDriverTracking;
 
     //
@@ -475,7 +473,6 @@ FxRegisterBugCheckCallback(
                                    &FxDriverGlobals->ImageSize))) {
         goto Done;
     }
-    
 
 
 
@@ -485,18 +482,6 @@ FxRegisterBugCheckCallback(
 
 
 
-    //
-    // The KeRegisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and register
-    // for the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeRegisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
 
     //
     // Register this driver with driver tracker.
@@ -507,7 +492,7 @@ FxRegisterBugCheckCallback(
             FxDriverGlobals->FxTrackDriverForMiniDumpLog = TRUE;
         }
     }
-    
+
     //
     // Initialize the callback record.
     //
@@ -516,7 +501,7 @@ FxRegisterBugCheckCallback(
     //
     // Register the bugcheck callback.
     //
-    funcPtr(callbackRecord,
+    KeRegisterBugCheckReasonCallback(callbackRecord,
             FxpBugCheckCallback,
             KbCallbackSecondaryDumpData,
             (PUCHAR)FxDriverGlobals->Public.DriverName);
@@ -531,29 +516,14 @@ FxUnregisterBugCheckCallback(
     __inout PFX_DRIVER_GLOBALS FxDriverGlobals
     )
 {
-    UNICODE_STRING funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD callbackRecord;
-    PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
 
     callbackRecord = &FxDriverGlobals->BugCheckCallbackRecord;
     if (NULL == callbackRecord->CallbackRoutine) {
         goto Done;
     }
 
-    //
-    // The KeDeregisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and deregister
-    // from the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeDeregisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-    
-    funcPtr(callbackRecord);
+    KeDeregisterBugCheckReasonCallback(callbackRecord);
     callbackRecord->CallbackRoutine = NULL;
 
     //
@@ -609,15 +579,15 @@ Notes:
 
     ASSERT(ReasonSpecificLength >= sizeof(KBUGCHECK_SECONDARY_DUMP_DATA));
     ASSERT(Reason == KbCallbackSecondaryDumpData);
-    
+
     dumpData = (PKBUGCHECK_SECONDARY_DUMP_DATA) ReasonSpecificData;
-    dumpSize = FxLibraryGlobals.BugCheckDriverInfoIndex * 
+    dumpSize = FxLibraryGlobals.BugCheckDriverInfoIndex *
                 sizeof(FX_DUMP_DRIVER_INFO_ENTRY);
     //
     // See if the bugcheck driver info is more than can fit in the dump
     //
     if (dumpData->MaximumAllowed < dumpSize) {
-        dumpSize = EXP_ALIGN_DOWN_ON_BOUNDARY( 
+        dumpSize = EXP_ALIGN_DOWN_ON_BOUNDARY(
                         dumpData->MaximumAllowed,
                         sizeof(FX_DUMP_DRIVER_INFO_ENTRY));
     }
@@ -625,7 +595,7 @@ Notes:
     if (0 == dumpSize) {
         goto Done;
     }
-    
+
     //
     // Ok, provide the info about the bugcheck data.
     //
@@ -640,12 +610,10 @@ VOID
 FxInitializeBugCheckDriverInfo()
 {
     NTSTATUS                                 status;
-    UNICODE_STRING                           funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD        callbackRecord;
-    PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK funcPtr;
     SIZE_T                                   arraySize;
     ULONG                                    arrayCount;
-    
+
 
     callbackRecord = &FxLibraryGlobals.BugCheckCallbackRecord;
     RtlZeroMemory(callbackRecord, sizeof(KBUGCHECK_REASON_CALLBACK_RECORD));
@@ -653,7 +621,6 @@ FxInitializeBugCheckDriverInfo()
     FxLibraryGlobals.BugCheckDriverInfoCount = 0;
     FxLibraryGlobals.BugCheckDriverInfoIndex = 0;
     FxLibraryGlobals.BugCheckDriverInfo = NULL;
-    
 
 
 
@@ -663,34 +630,22 @@ FxInitializeBugCheckDriverInfo()
 
 
 
-    //
-    // The KeRegisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and register
-    // for the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeRegisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_REGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
 
     arraySize = sizeof(FX_DUMP_DRIVER_INFO_ENTRY) * FX_DUMP_DRIVER_INFO_INCREMENT;
     arrayCount = FX_DUMP_DRIVER_INFO_INCREMENT;
 
-    FxLibraryGlobals.BugCheckDriverInfo = 
-        (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                    NonPagedPool,
+    FxLibraryGlobals.BugCheckDriverInfo =
+        (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePool2(
+                                    POOL_FLAG_NON_PAGED,
                                     arraySize,
                                     FX_TAG);
-    
+
     if (NULL == FxLibraryGlobals.BugCheckDriverInfo) {
         goto Done;
     }
 
     FxLibraryGlobals.BugCheckDriverInfoCount = arrayCount;
-    
+
     //
     // Init first entry for the framework.
     //
@@ -698,15 +653,15 @@ FxInitializeBugCheckDriverInfo()
     FxLibraryGlobals.BugCheckDriverInfo[0].Version.Major = __WDF_MAJOR_VERSION;
     FxLibraryGlobals.BugCheckDriverInfo[0].Version.Minor = __WDF_MINOR_VERSION;
     FxLibraryGlobals.BugCheckDriverInfo[0].Version.Build = __WDF_BUILD_NUMBER;
-    
+
     status = RtlStringCbCopyA(
                     FxLibraryGlobals.BugCheckDriverInfo[0].DriverName,
                     sizeof(FxLibraryGlobals.BugCheckDriverInfo[0].DriverName),
                     WdfLdrType);
-    
+
     if (!NT_SUCCESS(status)) {
         ASSERT(FALSE);
-        FxLibraryGlobals.BugCheckDriverInfo[0].DriverName[0] = '\0';     
+        FxLibraryGlobals.BugCheckDriverInfo[0].DriverName[0] = '\0';
     }
 
     FxLibraryGlobals.BugCheckDriverInfoIndex++;
@@ -719,7 +674,7 @@ FxInitializeBugCheckDriverInfo()
     //
     // Register the bugcheck callback.
     //
-    funcPtr(callbackRecord,
+    KeRegisterBugCheckReasonCallback(callbackRecord,
             FxpLibraryBugCheckCallback,
             KbCallbackSecondaryDumpData,
             (PUCHAR)WdfLdrType);
@@ -732,14 +687,12 @@ Done:;
 VOID
 FxUninitializeBugCheckDriverInfo()
 {
-    UNICODE_STRING                              funcName;
     PKBUGCHECK_REASON_CALLBACK_RECORD           callbackRecord;
-    PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK  funcPtr;
 
     //
     // Deregister callback.
     //
-    
+
 
 
 
@@ -751,20 +704,7 @@ FxUninitializeBugCheckDriverInfo()
         goto Done;
     }
 
-    //
-    // The KeDeregisterBugCheckReasonCallback exists for xp sp1 and above. So
-    // check whether this function is defined on the current OS and deregister
-    // from the bugcheck callback only if this function is defined.
-    //
-    RtlInitUnicodeString(&funcName, L"KeDeregisterBugCheckReasonCallback");
-    funcPtr = (PFN_KE_DEREGISTER_BUGCHECK_REASON_CALLBACK)
-        MmGetSystemRoutineAddress(&funcName);
-
-    if (NULL == funcPtr) {
-        goto Done;
-    }
-
-    funcPtr(callbackRecord);
+    KeDeregisterBugCheckReasonCallback(callbackRecord);
     callbackRecord->CallbackRoutine = NULL;
 
     //
@@ -777,13 +717,13 @@ FxUninitializeBugCheckDriverInfo()
     //
     // Dynamic KMDF framework is unloading, make sure there is only one entry
     // left in the driver info array; the framework lib was using this entry
-    // to store its version. 
+    // to store its version.
     //
     ASSERT(1 == FxLibraryGlobals.BugCheckDriverInfoIndex);
 
     FxLibraryGlobals.BugCheckDriverInfoIndex = 0;
     FxLibraryGlobals.BugCheckDriverInfoCount = 0;
-    
+
     MxMemory::MxFreePool(FxLibraryGlobals.BugCheckDriverInfo);
     FxLibraryGlobals.BugCheckDriverInfo = NULL;
 
@@ -827,16 +767,16 @@ FxCacheBugCheckDriverInfo(
         }
 
         newCount = FxLibraryGlobals.BugCheckDriverInfoCount +
-                      FX_DUMP_DRIVER_INFO_INCREMENT;  
+                      FX_DUMP_DRIVER_INFO_INCREMENT;
 
         //
-        // Allocate new buffer to hold driver info. 
+        // Allocate new buffer to hold driver info.
         //
-        driverInfo = (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                NonPagedPool,
+        driverInfo = (PFX_DUMP_DRIVER_INFO_ENTRY)MxMemory::MxAllocatePool2(
+                                POOL_FLAG_NON_PAGED,
                                 sizeof(FX_DUMP_DRIVER_INFO_ENTRY)* newCount,
                                 FX_TAG);
-        
+
         if (NULL == driverInfo) {
             goto Done;
         }
@@ -844,7 +784,7 @@ FxCacheBugCheckDriverInfo(
         //
         // Copy data from old to new buffer.
         //
-        RtlCopyMemory(driverInfo, 
+        RtlCopyMemory(driverInfo,
                       FxLibraryGlobals.BugCheckDriverInfo,
                       FxLibraryGlobals.BugCheckDriverInfoCount *
                         sizeof(FX_DUMP_DRIVER_INFO_ENTRY));
@@ -853,7 +793,7 @@ FxCacheBugCheckDriverInfo(
         //
         oldDriverInfo = FxLibraryGlobals.BugCheckDriverInfo;
         FxLibraryGlobals.BugCheckDriverInfo = driverInfo;
-        FxLibraryGlobals.BugCheckDriverInfoCount = newCount;        
+        FxLibraryGlobals.BugCheckDriverInfoCount = newCount;
         driverInfo = NULL; // just in case.
 
         //
@@ -863,7 +803,7 @@ FxCacheBugCheckDriverInfo(
         oldDriverInfo = NULL;
     }
 
-    ASSERT(FxLibraryGlobals.BugCheckDriverInfoIndex < 
+    ASSERT(FxLibraryGlobals.BugCheckDriverInfoIndex <
                 FxLibraryGlobals.BugCheckDriverInfoCount);
     //
     // Compute ptr to free entry.
@@ -876,26 +816,26 @@ FxCacheBugCheckDriverInfo(
     driverInfo->FxDriverGlobals = FxDriverGlobals;
     driverInfo->Version = FxDriverGlobals->WdfBindInfo->Version;
 
-    C_ASSERT(sizeof(driverInfo->DriverName) == 
+    C_ASSERT(sizeof(driverInfo->DriverName) ==
                 sizeof(FxDriverGlobals->Public.DriverName));
     RtlCopyMemory(driverInfo->DriverName,
                   FxDriverGlobals->Public.DriverName,
                   sizeof(driverInfo->DriverName));
-    driverInfo->DriverName[ARRAY_SIZE(driverInfo->DriverName) - 1] = '\0';     
+    driverInfo->DriverName[ARRAY_SIZE(driverInfo->DriverName) - 1] = '\0';
 
     //
     // Cache this index for later when the driver is removed.
     //
-    FxDriverGlobals->BugCheckDriverInfoIndex = 
+    FxDriverGlobals->BugCheckDriverInfoIndex =
         FxLibraryGlobals.BugCheckDriverInfoIndex;
 
     //
     // Update global index.
     //
     FxLibraryGlobals.BugCheckDriverInfoIndex++;
-    
+
 Done:
-    
+
     FxLibraryGlobals.FxDriverGlobalsListLock.Release(irql);
 }
 
@@ -909,9 +849,9 @@ FxPurgeBugCheckDriverInfo(
     ULONG                       driverIndex = 0;
     ULONG                       shiftCount  = 0;
     ULONG                       i           = 0;
-    
+
     FxLibraryGlobals.FxDriverGlobalsListLock.Acquire(&irql);
-    
+
     //
     // Zero means 'not used'.
     //
@@ -927,19 +867,19 @@ FxPurgeBugCheckDriverInfo(
         ASSERT(FALSE); // driverIndex > 0 with NULL array?
         goto Done;
     }
-    
-    
-    ASSERT(FxLibraryGlobals.BugCheckDriverInfoIndex <= 
+
+
+    ASSERT(FxLibraryGlobals.BugCheckDriverInfoIndex <=
             FxLibraryGlobals.BugCheckDriverInfoCount);
 
     //
-    // Index boundary validation. 
+    // Index boundary validation.
     //
     if (driverIndex >= FxLibraryGlobals.BugCheckDriverInfoIndex) {
         ASSERT(FALSE);
         goto Done;
     }
-    
+
     //
     // Compute ptr to driver info.
     //
@@ -958,8 +898,8 @@ FxPurgeBugCheckDriverInfo(
     //
     shiftCount = FxLibraryGlobals.BugCheckDriverInfoIndex - driverIndex - 1;
     if (shiftCount > 0) {
-        RtlMoveMemory(driverInfo, 
-                      driverInfo + 1, 
+        RtlMoveMemory(driverInfo,
+                      driverInfo + 1,
                       shiftCount * sizeof(FX_DUMP_DRIVER_INFO_ENTRY));
     }
 
@@ -972,9 +912,9 @@ FxPurgeBugCheckDriverInfo(
         FxLibraryGlobals.BugCheckDriverInfo[i].FxDriverGlobals->
                 BugCheckDriverInfoIndex--;
     }
-    
+
 Done:
-    
+
     FxLibraryGlobals.FxDriverGlobalsListLock.Release(irql);
 }
 
@@ -1001,7 +941,7 @@ VOID
 FX_DRIVER_TRACKER_CACHE_AWARE::Uninitialize()
 {
     if (m_PoolToFree != NULL) {
-        
+
 #ifdef DBG
     for (ULONG index = 0; index < m_Number; ++index) {
         PFX_DRIVER_TRACKER_ENTRY driverUsage = NULL;
@@ -1027,11 +967,9 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     ULONG                       index       = 0;
     PFX_DRIVER_TRACKER_ENTRY    pool        = NULL;
     PFX_DRIVER_TRACKER_ENTRY    driverUsage = NULL;
-    UNICODE_STRING              funcName;
-    PVOID                       funcPtr     = NULL;
 
     //
-    // Nothing to do if tracker is already initialized. No need for a lock 
+    // Nothing to do if tracker is already initialized. No need for a lock
     // here since PnP already serializes driver initialization.
     //
     if (m_PoolToFree != NULL) {
@@ -1039,53 +977,16 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
         status = STATUS_SUCCESS;
         goto Done;
     }
-    
+
     //
     // Intialize the procgrp down level library.
     //
     WdmlibProcgrpInitialize();
 
     //
-    // Capture maximum number of processors. 
+    // Capture maximum number of processors.
     //
-    RtlInitUnicodeString(&funcName, L"KeQueryMaximumProcessorCountEx");
-    funcPtr = MmGetSystemRoutineAddress(&funcName);
-    if (funcPtr != NULL) {
-        //
-        // Win 7 and forward.
-        //
-        m_Number = ((PFN_KE_QUERY_MAXIMUM_PROCESSOR_COUNT_EX)funcPtr)(
-                            ALL_PROCESSOR_GROUPS);
-    }
-    else {
-        RtlInitUnicodeString(&funcName, L"KeQueryMaximumProcessorCount");
-        funcPtr = MmGetSystemRoutineAddress(&funcName);
-        if (funcPtr != NULL) {
-            //
-            // Windows Server 2008.
-            //
-            m_Number = ((PFN_KE_QUERY_MAXIMUM_PROCESSOR_COUNT)funcPtr)();
-        }
-        else {
-            if ((5 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion && 
-                 0 <  FxLibraryGlobals.OsVersionInfo.dwMinorVersion) ||
-                (6 == FxLibraryGlobals.OsVersionInfo.dwMajorVersion && 
-                 0 == FxLibraryGlobals.OsVersionInfo.dwMinorVersion)){
-                //
-                // XP (Major=5, Minor>0) and Vista (Major=6, Minor=0).
-                //
-                m_Number = (ULONG)(*((CCHAR *)&KeNumberProcessors));
-            }
-            else {
-                //
-                // This feature is not supported for Windows 2000.
-                //
-                ASSERT(FALSE);
-                status = STATUS_NOT_SUPPORTED;
-                goto Done;
-            }
-        }
-    }
+    m_Number = KeQueryMaximumProcessorCountEx(ALL_PROCESSOR_GROUPS);
 
     //
     // Validate upper bound.
@@ -1094,29 +995,14 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
         status = STATUS_NOT_SUPPORTED;
         goto Done;
     }
-    
+
     //
     // Determine padded size of each tracking entry structure.
     //
     if (m_Number > 1 ) {
-        RtlInitUnicodeString(&funcName, L"KeGetRecommendedSharedDataAlignment");
-        funcPtr = MmGetSystemRoutineAddress(&funcName);
-
-        if (funcPtr != NULL) {
-            //
-            //XP and forward
-            //
-            paddedSize = ((PFN_KE_GET_RECOMMENDED_SHARED_DATA_ALIGNMENT)funcPtr)();
-            ASSERT ((paddedSize & (paddedSize - 1)) == 0);
-        } 
-        else {
-            //
-            // This feature is not supported for Windows 2000.
-            //
-            status = STATUS_NOT_SUPPORTED;
-            goto Done;
-        }
-    } 
+        paddedSize = KeGetRecommendedSharedDataAlignment();
+        ASSERT ((paddedSize & (paddedSize - 1)) == 0);
+    }
     else {
         paddedSize = sizeof(FX_DRIVER_TRACKER_ENTRY);
     }
@@ -1128,8 +1014,8 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     //
     m_EntrySize = paddedSize;
 
-    pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                        NonPagedPool,
+    pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePool2(
+                                        POOL_FLAG_NON_PAGED,
                                         paddedSize * m_Number,
                                         FX_TAG);
     if (NULL == pool) {
@@ -1149,8 +1035,8 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
         //
         // Allocate enough padding so we can start the refs on an aligned boundary
         //
-        pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePoolWithTag(
-                                        NonPagedPool,
+        pool = (PFX_DRIVER_TRACKER_ENTRY)MxMemory::MxAllocatePool2(
+                                        POOL_FLAG_NON_PAGED,
                                         paddedSize * m_Number + paddedSize,
                                         FX_TAG);
         if (NULL == pool) {
@@ -1187,10 +1073,10 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Register(
     // All done.
     //
     status = STATUS_SUCCESS;
-    
+
 Done:
     return status;
-} 
+}
 
 VOID
 FX_DRIVER_TRACKER_CACHE_AWARE::Deregister(
@@ -1204,9 +1090,9 @@ FX_DRIVER_TRACKER_CACHE_AWARE::Deregister(
     // Cleanup any refs to this driver's globals.
     //
     if (m_PoolToFree != NULL) {
-        
+
         ASSERT(m_DriverUsage != NULL && m_Number != 0);
-   
+
         for (index = 0; index < m_Number; ++index) {
             driverUsage = GetProcessorDriverEntryRef(index);
             if (driverUsage->FxDriverGlobals == FxDriverGlobals) {

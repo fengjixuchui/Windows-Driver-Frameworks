@@ -53,7 +53,7 @@ FxUsbDevice::InitDevice(
     RtlZeroMemory(&urb, sizeof(urb));
 
     if (USBDClientContractVersionForWdfClient != USBD_CLIENT_CONTRACT_VERSION_INVALID) {
-        
+
         //
         // Register with USBDEX.lib
         //
@@ -70,8 +70,18 @@ FxUsbDevice::InitDevice(
             goto Done;
         }
 
-        m_UrbType = FxUrbTypeUsbdAllocated;        
-    } 
+        m_UrbType = FxUrbTypeUsbdAllocated;
+
+        //
+        // Query whether the host supports USBD_PF_HANDLES_SSP_HIGH_BANDWIDTH_ISOCH
+        //
+        status = USBD_QueryUsbCapability(m_USBDHandle,
+                                         &GUID_USB_CAPABILITY_SSP_ISOCH_PIPE_FLAGS,
+                                         0,
+                                         NULL,
+                                         NULL);
+        m_SspIsochPipeFlags = NT_SUCCESS(status);
+    }
 
     status = request.m_TrueRequest->ValidateTarget(this);
     if (!NT_SUCCESS(status)) {
@@ -167,7 +177,7 @@ FxUsbDevice::InitDevice(
 
         goto Done;
     }
-    
+
     //
     // Allocate an additional memory at the end of the buffer so if we
     // accidentily access fields beyond the end of the buffer we don't crash
@@ -180,11 +190,11 @@ FxUsbDevice::InitDevice(
 
     size = config.wTotalLength;
     ULONG paddedSize = size + sizeof(USB_DEVICE_DESCRIPTOR);
-    
+
     m_ConfigDescriptor = (PUSB_CONFIGURATION_DESCRIPTOR)
-        FxPoolAllocate(GetDriverGlobals(),
-                       NonPagedPool,
-                       paddedSize);
+        FxPoolAllocate2(GetDriverGlobals(),
+                        POOL_FLAG_NON_PAGED,
+                        paddedSize);
 
     if (m_ConfigDescriptor == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -196,8 +206,6 @@ FxUsbDevice::InitDevice(
 
         goto Done;
     }
-
-    RtlZeroMemory(m_ConfigDescriptor, paddedSize);
 
     UsbBuildGetDescriptorRequest(&urb,
                                  sizeof(_URB_CONTROL_DESCRIPTOR_REQUEST),
@@ -403,16 +411,15 @@ FxUsbDevice::GetString(
     if (String != NULL) {
         length = sizeof(USB_STRING_DESCRIPTOR) + (*NumCharacters - 1) * sizeof(WCHAR);
 
-        buffer = FxPoolAllocate(GetDriverGlobals(),
-                                NonPagedPool,
-                                length);
+        buffer = FxPoolAllocate2(GetDriverGlobals(),
+                                 POOL_FLAG_NON_PAGED,
+                                 length);
 
         if (buffer == NULL) {
             status = STATUS_INSUFFICIENT_RESOURCES;
             goto Done;
         }
 
-        RtlZeroMemory(buffer, length);
         pDescriptor = (PUSB_STRING_DESCRIPTOR) buffer;
     }
     else {
@@ -487,7 +494,7 @@ FxUsbDevice::GetString(
     }
 
 Done:
-    
+
     return status;
 }
 
@@ -535,7 +542,7 @@ Return Value:
         pContext = (FxUsbDeviceStringContext*) Request->GetContext();
     }
     else {
-        
+
         urbType = GetFxUrbTypeForRequest(Request);
         pContext = new(GetDriverGlobals()) FxUsbDeviceStringContext(urbType);
         if (pContext == NULL) {
@@ -573,11 +580,11 @@ Return Value:
 
     if (pContext->m_Urb == &pContext->m_UrbLegacy) {
         urbType = FxUrbTypeLegacy;
-    } 
+    }
     else {
         urbType = FxUrbTypeUsbdAllocated;
     }
-    
+
     FxFormatUsbRequest(Request, (PURB)pContext->m_Urb, urbType, m_USBDHandle);
 
     return STATUS_SUCCESS;
@@ -626,12 +633,12 @@ FxUsbDevice::FormatControlRequest(
     else {
 
         urbType = GetFxUrbTypeForRequest(Request);
-        pContext = new(GetDriverGlobals()) FxUsbDeviceControlContext(urbType);        
+        pContext = new(GetDriverGlobals()) FxUsbDeviceControlContext(urbType);
         if (pContext == NULL) {
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        if (urbType == FxUrbTypeUsbdAllocated) {            
+        if (urbType == FxUrbTypeUsbdAllocated) {
             status = pContext->AllocateUrb(m_USBDHandle);
             if (!NT_SUCCESS(status)) {
                 DoTraceLevelMessage(GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGIOTARGET,
@@ -647,7 +654,7 @@ FxUsbDevice::FormatControlRequest(
             //
             Request->EnableContextDisposeNotification();
         }
-        
+
         Request->SetContext(pContext);
     }
 
@@ -674,11 +681,11 @@ FxUsbDevice::FormatControlRequest(
 
     if (pContext->m_Urb == &pContext->m_UrbLegacy) {
         urbType = FxUrbTypeLegacy;
-    } 
+    }
     else {
         urbType = FxUrbTypeUsbdAllocated;
     }
-    
+
     FxFormatUsbRequest(Request, (PURB)pContext->m_Urb, urbType, m_USBDHandle);
 
     return STATUS_SUCCESS;
@@ -761,9 +768,9 @@ FxUsbDevice::QueryUsbCapability(
     __drv_when(CapabilityBufferLength != 0 && ResultLength == NULL, __out_bcount(CapabilityBufferLength))
     __drv_when(CapabilityBufferLength != 0 && ResultLength != NULL, __out_bcount_part_opt(CapabilityBufferLength, *ResultLength))
     PVOID CapabilityBuffer,
-    __out_opt 
+    __out_opt
     __drv_when(ResultLength != NULL,__deref_out_range(<=,CapabilityBufferLength))
-    PULONG ResultLength    
+    PULONG ResultLength
    )
 {
     NTSTATUS status;
@@ -782,7 +789,7 @@ FxUsbDevice::QueryUsbCapability(
 
         return status;
     }
-    
+
     status = USBD_QueryUsbCapability(m_USBDHandle,
                                      CapabilityType,
                                      CapabilityBufferLength,
@@ -792,7 +799,7 @@ FxUsbDevice::QueryUsbCapability(
     if (!NT_SUCCESS(status)) {
         DoTraceLevelMessage(
             GetDriverGlobals(), TRACE_LEVEL_ERROR, TRACINGIOTARGET,
-            "Could not retrieve capability %!GUID!, %!STATUS!", 
+            "Could not retrieve capability %!GUID!, %!STATUS!",
             CapabilityType, status);
         goto exit;
     }
@@ -867,10 +874,7 @@ Return Value:
         return STATUS_INVALID_PARAMETER;
     }
 
-    urb = FxUsbCreateConfigRequest(GetDriverGlobals(),
-                                   m_ConfigDescriptor,
-                                   &listEntry[0],
-                                   GetDefaultMaxTransferSize());
+    urb = CreateConfigRequest(m_ConfigDescriptor, &listEntry[0]);
 
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -931,17 +935,15 @@ Return Value:
     // The array needs an extra element which is zero'd out to mark the end
     //
     size = sizeof(USBD_INTERFACE_LIST_ENTRY) * (m_NumInterfaces + 1);
-    pList = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate(
+    pList = (PUSBD_INTERFACE_LIST_ENTRY) FxPoolAllocate2(
         pFxDriverGlobals,
-        NonPagedPool,
+        POOL_FLAG_NON_PAGED,
         size
         );
 
     if (pList == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    RtlZeroMemory(pList, size);
 
     if (Params->Type == WdfUsbTargetDeviceSelectConfigTypeMultiInterface) {
         for (i = 0; i < m_NumInterfaces; i++) {
@@ -1009,14 +1011,14 @@ Return Value:
                     if (pList[interfacePairsNum].InterfaceDescriptor == NULL) {
                         status = STATUS_INVALID_PARAMETER;
                         DoTraceLevelMessage(
-                            GetDriverGlobals(), TRACE_LEVEL_ERROR, 
+                            GetDriverGlobals(), TRACE_LEVEL_ERROR,
                             TRACINGIOTARGET,
                             "WDFUSBDEVICE %p could not retrieve "
                             "AlternateSetting %d for "
-                            "bInterfaceNumber %d, returning %!STATUS!", 
+                            "bInterfaceNumber %d, returning %!STATUS!",
                             GetHandle(),
                             altSettingIndex, interfaceNumber, status);
-                        goto Done;                        
+                        goto Done;
                     }
 
                     interfacePairsNum++;
@@ -1042,12 +1044,7 @@ Return Value:
         }
     } //WdfUsbTargetDeviceSelectConfigTypeInterfacesPairs
 
-    urb = FxUsbCreateConfigRequest(
-        GetDriverGlobals(),
-        m_ConfigDescriptor,
-        pList,
-        GetDefaultMaxTransferSize()
-        );
+    urb = CreateConfigRequest(m_ConfigDescriptor, pList);
 
     if (urb == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1090,14 +1087,14 @@ FxUsbDevice::Reset(
                             "Failed to initialize FxSyncRequest");
         return status;
     }
-    
+
     status = FormatIoctlRequest(request.m_TrueRequest,
                                 IOCTL_INTERNAL_USB_RESET_PORT,
                                 TRUE,
                                 &emptyBuffer,
                                 &emptyBuffer);
     if (NT_SUCCESS(status)) {
-        CancelSentIo();        
+        CancelSentIo();
         status = SubmitSyncRequestIgnoreTargetState(request.m_TrueRequest, NULL);
     }
 
